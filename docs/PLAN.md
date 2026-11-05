@@ -227,7 +227,8 @@ size), Changesets for releases, npm publishing. License: MIT (to confirm).
 
 ## Open decisions
 
-- Repository owner/name and license.
+- ~~Repository owner/name and license~~ Decided:
+  `RaananW/html-in-canvas-polyfill`, MIT.
 - ~~Own serializer vs a dependency~~ Decided: own serializer. It has better
   fidelity, is 5–40× faster on token-heavy pages, and is the smallest at
   3.9 KB. See [SPIKE.md](SPIKE.md).
