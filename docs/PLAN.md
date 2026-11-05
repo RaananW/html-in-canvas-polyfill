@@ -34,7 +34,7 @@ sized to the canvas content box. There are two modes:
 | Native | Polyfill |
 |---|---|
 | `content=drawable` / `layoutsubtree` | MutationObserver on attributes → set up host |
-| snapshot per `drawable` (excl. nested drawables) | clone → inline computed styles, fonts, images (data URLs), form state → foreignObject (data URL only) → `img.decode()` → `createImageBitmap` (Chromium: via an intermediate canvas to avoid taint; WebKit: direct, chosen by feature test, see [SPIKE.md](SPIKE.md)); nested drawables replaced by same-size empty boxes |
+| snapshot per `drawable` (excl. nested drawables) | clone → inline computed styles, fonts, images (data URLs), form state → foreignObject (data URL only) → `img.decode()` → `createImageBitmap` (Chromium: via an intermediate canvas to avoid taint; WebKit/Firefox: direct; chosen by feature test, see [SPIKE.md](SPIKE.md)); nested drawables replaced by same-size empty boxes |
 | `paint` event + `changedElements` | dirty tracking: MutationObserver, ResizeObserver, input/change/focus/scroll, transition/animation run→end (continuous), `document.fonts`, image load. Re-snapshot dirty elements, then dispatch `CanvasPaintEvent` in rAF when the bitmaps are ready. Reverse tree order. |
 | `requestPaint()` | force paint in next rAF |
 | `drawElementImage` (3 overloads) | `drawImage(bitmap, …)` scaled by DPR. Throws before the first snapshot, matching native behavior. Auto `updateElementGeometry` from `ctx.getTransform()` × dest rect unless `preserveElementGeometry` is set. |
@@ -60,10 +60,14 @@ sized to the canvas content box. There are two modes:
   classes.
 - Native form-control appearance inside foreignObject varies by engine.
   WebKit draws form controls without the platform theme: no accent colour,
-  and a flat range input and select.
-- Tainting (verified in the spike): blob URLs taint everywhere. In Chromium,
-  `createImageBitmap(img)` taints, but going through an intermediate canvas
-  is clean. In WebKit, the direct bitmap is clean.
+  and a flat range input and select. Firefox also flattens text fields,
+  selects, and range inputs, and does not paint checkboxes at all.
+- Firefox loses `background-clip: text` (gradient text) on the
+  canvas/bitmap path.
+- Tainting (verified in the spike): blob URLs taint in Chromium and WebKit,
+  but not in Firefox. In Chromium, `createImageBitmap(img)` taints, but going
+  through an intermediate canvas is clean. In WebKit and Firefox, the direct
+  bitmap is clean.
 - Opaque pseudo-elements (`::-webkit-slider-thumb`, `::marker`, …) are copied
   as stylesheet rules. Rules that depend on ancestors outside the snapshot
   root do not match.
@@ -72,7 +76,7 @@ sized to the canvas content box. There are two modes:
 
 ## Phases
 
-0. **Spike (done, Firefox pending; see [SPIKE.md](SPIKE.md))**: foreignObject snapshot of a form + styled text in
+0. **Spike (done; see [SPIKE.md](SPIKE.md))**: foreignObject snapshot of a form + styled text in
    Chromium (flag off), Firefox, and WebKit. Measure taint, latency, fidelity,
    and WebGL/WebGPU upload. Decide: own serializer vs build on
    `modern-screenshot` / `html-to-image`. Outcome: own serializer, starting

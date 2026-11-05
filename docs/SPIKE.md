@@ -3,12 +3,11 @@
 **Decision:** we write our own serializer and take no runtime dependency on
 `modern-screenshot` or `html-to-image`.
 
-**Status:** Chromium (flag off), WebKit, and native Chromium (flag on) were
-measured. **Firefox is pending.** Playwright's Firefox could not start from
-the agent environment, because macOS app-data protection blocks
-`~/Library/Application Support/Firefox`. To measure it, run the command under
-[Reproduce](#reproduce) with `BROWSERS=firefox` and add the results to this
-document.
+**Status:** done. Measured in Chromium 156 (flag off), Firefox 157, WebKit
+27.2, and native Chromium (flag on). On macOS, Playwright's Firefox must be
+started from a regular terminal: app-data protection can block
+`~/Library/Application Support/Firefox` for sandboxed or agent-hosted
+processes.
 
 ## Method
 
@@ -65,47 +64,59 @@ node size.mjs
 
 ### Taint and GPU upload
 
-| Path | Chromium | WebKit 27.2 |
-|---|---|---|
-| data URL → `createImageBitmap(img)` | **tainted** | clean |
-| data URL → `drawImage` to canvas → `createImageBitmap(canvas)` | clean | clean, but shadows render darker (see below) |
-| blob URL (either path) | tainted | tainted |
-| `texImage2D` / `copyExternalImageToTexture` from a clean bitmap | ok / ok | ok / ok |
+| Path | Chromium | Firefox 157 | WebKit 27.2 |
+|---|---|---|---|
+| data URL → `createImageBitmap(img)` | **tainted** | clean | clean |
+| data URL → `drawImage` to canvas → `createImageBitmap(canvas)` | clean | clean | clean, but shadows render darker (see below) |
+| blob URL (either path) | tainted | clean | tainted |
+| `texImage2D` / `copyExternalImageToTexture` from a clean bitmap | ok / ok | ok / untested³ | ok / ok |
 
 Recommended pipeline: always use a **data URL**, never a blob URL.
 
 - **Chromium:** go through an intermediate canvas.
-- **WebKit:** use `createImageBitmap(img)` directly.
+- **WebKit and Firefox:** use `createImageBitmap(img)` directly.
 
 Pick the path by feature test: try the direct bitmap and check whether it is
 tainted. Don't sniff the user agent.
 
 ### Fidelity and latency (own serializer, recommended path, warm)
 
-| Fixture | Chromium dpr1 | Chromium dpr2 | WebKit dpr1 | WebKit dpr2 | Chromium warm | WebKit warm |
-|---|---|---|---|---|---|---|
-| text | 0% | 0% | 0.01% | 0.34% | 8 ms | 9 ms |
-| form | 0.28% | 0.42% | 4.03%¹ | 4.59%¹ | 9 ms | 12 ms |
-| box | 0% | 0% | 0.42% | 0.48% | 2.5 ms | 3 ms |
-| images | 7.05%² | 7.25%² | 7.05%² | 7.25%² | 3 ms | 4 ms |
-| large (~1,500 nodes) | 0.49% | 0.27% | 0% | 0.75% | 95–105 ms | 108 ms |
-| strata | 0% | 0% | 0.15% | 0.88% | 30 ms | 35 ms |
+Diff at DPR 1 / DPR 2, then warm latency at DPR 1.
 
-¹ WebKit draws form controls inside an SVG image without the platform theme:
-no accent colour, and a flat range input and select. A bare checkbox
-reproduces this, so it is an engine limitation.
+| Fixture | Chromium | Firefox | WebKit | Chromium warm | Firefox warm | WebKit warm |
+|---|---|---|---|---|---|---|
+| text | 0% / 0% | 1.49% / 1.52%⁴ | 0.01% / 0.34% | 8 ms | 7 ms | 9 ms |
+| form | 0.28% / 0.42% | 6.44% / 5.54%¹ | 4.03% / 4.59%¹ | 9 ms | 9 ms | 12 ms |
+| box | 0% / 0% | 0% / 0% | 0.42% / 0.48% | 2.5 ms | 4 ms | 3 ms |
+| images | 7.05% / 7.25%² | 7.05% / 7.25%² | 7.05% / 7.25%² | 3 ms | 7 ms | 4 ms |
+| large (~1,500 nodes) | 0.49% / 0.27% | 0% / 0% | 0% / 0.75% | 95–105 ms | 132–139 ms | 108 ms |
+| strata | 0% / 0% | 0% / 0% | 0.15% / 0.88% | 30 ms | 34 ms | 35 ms |
+
+¹ Engine limitation: form controls inside an SVG image are drawn without the
+platform theme. WebKit loses the accent colour and draws a flat range input
+and select. Firefox is worse: text fields and selects get plain borders, the
+range input is flat, and **checkboxes are not painted at all**. A bare,
+unstyled control reproduces this in both engines. Strata is unaffected
+because it styles its controls with `appearance: none`.
 ² The no-CORS cross-origin image is omitted on purpose. Native
 `drawElementImage` omits it too (`vsOwn` = 0%).
+³ Headless Firefox has no WebGPU adapter, so the WebGPU upload could not be
+tested.
+⁴ Gradient text using `background-clip: text` renders when the SVG is shown
+in an `<img>`, but disappears after `drawImage` / `createImageBitmap` in
+Firefox. This is an engine limitation.
 
 ### Libraries (DPR 1, warm)
 
-| Fixture | modern-screenshot, Chromium | modern-screenshot, WebKit | html-to-image, Chromium | html-to-image, WebKit |
-|---|---|---|---|---|
-| form | 3.45%, 33 ms | 5.66%, 51 ms | 5.53%, 38 ms | 6.25%, 49 ms |
-| box | 4.54%, 32 ms | 7.83%, 145 ms | 3.23%, 16 ms | 4.87%, 22 ms |
-| images | 7.05%, 22 ms | 7.05%, 556 ms | **error** | **error** |
-| large | 0.49%, 545 ms | 0%, 1,023 ms | 1.37%, 971 ms | 2.37%, 1,140 ms |
-| strata | 3.05%, 157 ms | 15.97%, 1,395 ms | 3.25%, 184 ms | 15.81%, 201 ms |
+Diff and warm latency, per browser (Chromium / Firefox / WebKit).
+
+| Fixture | modern-screenshot | html-to-image |
+|---|---|---|
+| form | 3.45% 33 ms / 7.23% 44 ms / 5.66% 51 ms | 5.53% 38 ms / 8.73% 33 ms / 6.25% 49 ms |
+| box | 4.54% 32 ms / 4.52% 128 ms / 7.83% 145 ms | 3.23% 16 ms / 1.15% 16 ms / 4.87% 22 ms |
+| images | 7.05% 22 ms / 7.05% 578 ms / 7.05% 556 ms | **error** in all three |
+| large | 0.49% 545 ms / 0% 901 ms / 0% 1,023 ms | 1.37% 971 ms / 0.95% 769 ms / 2.37% 1,140 ms |
+| strata | 3.05% 157 ms / 2.52% 1,408 ms / 15.97% 1,395 ms | 3.25% 184 ms / 1.63% 137 ms / 15.81% 201 ms |
 
 Both libraries have these problems:
 - They lose checkbox, radio, select, or textarea state, scroll offsets, and
@@ -159,6 +170,13 @@ prototype serializer.
   the matching stylesheet rules into the SVG `<style>`, after evaluating
   `@media` and `@supports`. A rule only matches if its ancestor context is
   inside the snapshot root.
+- **Firefox and WebKit, native controls:** these engines cannot draw themed
+  form controls in an SVG image, and Firefox does not paint checkboxes at
+  all. Not fixable in the serializer. Phase 4 should consider drawing
+  checkbox, radio, and range controls itself (replacing them in the clone
+  with styled elements).
+- **Firefox, `background-clip: text`:** lost on the canvas/bitmap path. Not
+  fixable in the serializer; document it as a limitation.
 - **Performance:** a design-system page carries hundreds of custom properties
   on `:root`. Enumerating every computed property made each snapshot about 3×
   slower. Read only the standard property names; computed values are already
