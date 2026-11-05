@@ -38,7 +38,7 @@ test('2D draws update geometry unless preserveElementGeometry is set', async ({ 
     const ctx = c.getContext('2d')!;
     const t = () => {
       const m = c.getElementTransform(a);
-      return [m.a, m.b, m.c, m.d, m.e, m.f].map((v) => Math.round(v * 1000) / 1000);
+      return [m.a, m.b, m.c, m.d, m.e, m.f].map((v) => Math.round(v * 1000) / 1000 + 0);
     };
     const out: Record<string, number[]> = {};
     ctx.drawElementImage(a, 20, 10);
