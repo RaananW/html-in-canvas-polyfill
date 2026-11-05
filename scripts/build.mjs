@@ -1,4 +1,8 @@
+import { rm } from 'node:fs/promises';
 import { build } from 'esbuild';
+
+// Stale code-split chunks would otherwise ship in the package.
+await rm('dist', { recursive: true, force: true });
 
 const common = {
   bundle: true,
