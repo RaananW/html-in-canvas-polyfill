@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Strata components in a canvas</title>
+<link rel="stylesheet" href="/node_modules/@underglass/ui/dist/css/strata.css" />
+<style>
+  body { margin: 0; padding: 16px; display: flex; gap: 16px; font: 14px system-ui, sans-serif; background: #fff; }
+  figure { margin: 0; }
+  figcaption { margin-bottom: 4px; color: #555; }
+  canvas, #reference { display: block; width: 380px; height: 420px; }
+  .panel { box-sizing: border-box; width: 380px; height: 420px; padding: 16px; display: flex; flex-direction: column; gap: 12px; background: var(--strata-colour-surface, #eee); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<figure>
+  <figcaption>Drawn into a canvas</figcaption>
+  <canvas id="canvas" content="drawable">
+    <div id="panel" class="panel" drawable data-strata-scope>
+      <div class="row">
+        <button type="button" class="ug-button ug-button--accent" data-strata-face="raised"><span class="ug-button__label">Save</span></button>
+        <button type="button" class="ug-button" data-strata-face="raised"><span class="ug-button__label">Cancel</span></button>
+        <span class="ug-badge ug-badge--success" data-strata-face="flat">Active</span>
+        <span class="ug-chip" data-strata-face="raised"><span class="ug-chip__label">Design</span></span>
+      </div>
+      <div class="row">
+        <label class="ug-switch"><input class="ug-switch__input" data-strata-face="well" type="checkbox" role="switch" checked><span class="ug-switch__knob" data-strata-face="knob" aria-hidden="true"></span><span class="ug-switch__label">Wi-Fi</span></label>
+        <label class="ug-checkbox"><input class="ug-checkbox__input" data-strata-face="well" type="checkbox"><span class="ug-checkbox__mark" data-strata-face="mark" aria-hidden="true"></span><span class="ug-checkbox__label">Newsletter</span></label>
+      </div>
+      <input class="ug-text-field" data-strata-face="well" type="email" aria-label="Email" value="ada@example.com">
+      <input type="range" class="ug-slider" data-strata-face="groove" min="0" max="100" value="40" aria-label="Volume">
+      <progress class="ug-progress" data-strata-face="groove" value="40" max="100" aria-label="Upload"></progress>
+      <fieldset class="ug-segmented"><legend class="ug-segmented__legend">View</legend><div class="ug-segmented__plinth">
+        <label class="ug-segmented__item"><input class="ug-segmented__input" type="radio" name="view" value="day" checked><span class="ug-segmented__key" data-strata-face="raised">Day</span></label>
+        <label class="ug-segmented__item"><input class="ug-segmented__input" type="radio" name="view" value="week"><span class="ug-segmented__key" data-strata-face="raised">Week</span></label>
+        <label class="ug-segmented__item"><input class="ug-segmented__input" type="radio" name="view" value="month" disabled><span class="ug-segmented__key" data-strata-face="raised">Month</span></label>
+      </div></fieldset>
+    </div>
+  </canvas>
+</figure>
+<figure>
+  <figcaption>Live DOM reference</figcaption>
+  <div id="reference"></div>
+</figure>
+<script type="module">
+  import { install } from '/dist/index.js';
+  window.__status = install({ force: new URLSearchParams(location.search).has('force') });
+
+  const canvas = document.getElementById('canvas');
+  const panel = document.getElementById('panel');
+  const reference = panel.cloneNode(true);
+  reference.removeAttribute('drawable');
+  reference.removeAttribute('id');
+  reference.querySelectorAll('input[name="view"]').forEach((input) => (input.name = 'view-reference'));
+  document.getElementById('reference').append(reference);
+
+  const resize = () => {
+    canvas.width = Math.round(canvas.clientWidth * devicePixelRatio);
+    canvas.height = Math.round(canvas.clientHeight * devicePixelRatio);
+  };
+  resize();
+  const ctx = canvas.getContext('2d');
+  canvas.onpaint = () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawElementImage(panel, 0, 0);
+    window.__painted = (window.__painted ?? 0) + 1;
+  };
+</script>
+</body>
+</html>

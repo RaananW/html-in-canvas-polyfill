@@ -1,0 +1,5 @@
+import { install } from './index.js';
+
+export * from './index.js';
+
+install();

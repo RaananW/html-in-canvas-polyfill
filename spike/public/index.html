@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HTML-in-Canvas polyfill — phase 0 snapshot spike</title>
+<link rel="stylesheet" href="assets/strata.css">
+<style>
+  @font-face {
+    font-family: 'Lobster';
+    src: url('assets/lobster.woff2') format('woff2');
+    font-display: block;
+  }
+  :root { --accent: #6b2fd6; }
+  html, body { margin: 0; background: #fff; }
+  body { font: 14px/1.4 system-ui, sans-serif; color: #222; }
+  #fixtures { position: absolute; left: 16px; top: 16px; display: flex; flex-direction: column; gap: 16px; }
+  #output { position: absolute; left: 420px; top: 16px; }
+  #out { display: block; }
+  .fx { width: 360px; box-sizing: border-box; padding: 12px; background: #f6f4ef; border: 1px solid #ccc; overflow: hidden; }
+
+  /* text */
+  #fx-text { height: 220px; }
+  #fx-text h2 { font-family: 'Lobster', cursive; font-size: 28px; margin: 0 0 4px; color: var(--accent); }
+  #fx-text p { margin: 4px 0; }
+  .spaced { letter-spacing: 3px; text-transform: uppercase; }
+  .shadow { text-shadow: 1px 1px 2px #e33; }
+  .clip { font-weight: 800; font-size: 20px; background: linear-gradient(90deg, #f06, #08f); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .pseudo::before { content: '★ '; color: #d80; }
+  .pseudo::after { content: ' (after)'; font-style: italic; color: #888; }
+  #fx-text ul { margin: 4px 0 0; padding-left: 20px; }
+
+  /* form */
+  #fx-form { height: 250px; display: grid; grid-template-columns: 90px 1fr; gap: 6px 8px; align-items: center; }
+  #fx-form textarea { height: 40px; resize: none; }
+  #fx-form button { justify-self: start; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; }
+
+  /* box */
+  #fx-box { height: 200px; position: relative; }
+  .card { position: absolute; left: 16px; top: 16px; width: 140px; height: 80px; border-radius: 14px; background: linear-gradient(135deg, #ffd27a, #ff6b8b); box-shadow: 0 6px 14px rgba(0,0,0,.35); }
+  .rot { position: absolute; left: 190px; top: 22px; width: 90px; height: 50px; transform: rotate(-12deg); border: 3px dashed #2a7; background: rgba(40,170,120,.15); opacity: .8; }
+  .filtered { position: absolute; left: 16px; top: 120px; width: 60px; height: 50px; background: #3a6ee8; filter: hue-rotate(90deg); outline: 3px solid #333; outline-offset: 2px; }
+  #scroller { position: absolute; left: 110px; top: 110px; width: 220px; height: 70px; overflow: auto; border: 1px solid #999; background: #fff; }
+  #scroller div { height: 22px; padding-left: 4px; }
+  #scroller div:nth-child(odd) { background: #eef; }
+
+  /* images */
+  #fx-images { height: 150px; display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+  #fx-images figure { margin: 0; width: 76px; font-size: 10px; text-align: center; }
+  #fx-images img, #fx-images .bg, #fx-images svg { display: block; width: 64px; height: 64px; margin: 0 auto 2px; }
+  #fx-large { height: 300px; font-size: 11px; columns: 3; column-gap: 8px; }
+  #fx-large .row { display: flex; justify-content: space-between; border-bottom: 1px solid #ddd; }
+  #fx-large .row b { color: var(--accent); }
+  #fx-strata { height: 420px; padding: 16px; display: flex; flex-direction: column; gap: 12px; background: var(--strata-colour-surface, #eee); }
+  #fx-strata .rowx { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  #fx-images .bg { background: url('assets/photo.png') center / cover; border-radius: 50%; }
+</style>
+</head>
+<body>
+<div id="fixtures">
+  <div id="fx-text" class="fx">
+    <h2>Lobster web font</h2>
+    <p><b>Bold</b>, <i>italic</i>, <u>underline</u>, <s>strike</s>, <span class="spaced">spaced</span>, <span class="shadow">text-shadow</span></p>
+    <p class="clip">Gradient clipped text</p>
+    <p class="pseudo">Pseudo-elements</p>
+    <p dir="rtl">שלום עולם — مرحبا بالعالم 👋🎉</p>
+    <ul><li>List marker item</li></ul>
+  </div>
+
+  <form id="fx-form" class="fx" onsubmit="return false">
+    <label for="typed">Typed</label><input id="typed" type="text">
+    <label for="ph">Placeholder</label><input id="ph" type="text" placeholder="Placeholder text">
+    <label for="agree">Checkbox</label><span><input id="agree" type="checkbox"> <label for="agree">agree</label> <input type="radio" name="r"> <input type="radio" name="r" checked></span>
+    <label for="size">Select</label><select id="size"><option>Small</option><option>Medium</option><option>Large</option></select>
+    <label for="notes">Textarea</label><textarea id="notes"></textarea>
+    <label for="volume">Range</label><input id="volume" type="range" min="0" max="100" value="20">
+    <label>Disabled</label><input type="text" value="disabled" disabled>
+    <span></span><button type="button">Submit</button>
+  </form>
+
+  <div id="fx-box" class="fx">
+    <div class="card"></div>
+    <div class="rot">rotated</div>
+    <div class="filtered"></div>
+    <div id="scroller">
+      <div>row 1</div><div>row 2</div><div>row 3 (scrolled to)</div><div>row 4</div><div>row 5</div><div>row 6</div>
+    </div>
+  </div>
+
+  <div id="fx-images" class="fx">
+    <figure><img src="assets/photo.png" alt="">same-origin</figure>
+    <figure><div class="bg"></div>css bg</figure>
+    <figure><img src="__XORIGIN__/assets/photo.png?cors=1" crossorigin="anonymous" alt="">x-origin CORS</figure>
+    <figure><img src="__XORIGIN__/assets/photo.png" alt="">x-origin no-CORS</figure>
+    <figure><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="28" fill="#6b2fd6"/><text x="32" y="38" font-size="16" text-anchor="middle" fill="#fff">svg</text></svg>inline svg</figure>
+  </div>
+  <div id="fx-large" class="fx"></div>
+
+  <!-- Strata (@underglass/ui) components, markup from docs/ui-library/components/*.md -->
+  <div id="fx-strata" class="fx" data-strata-scope>
+    <div class="rowx">
+      <button type="button" class="ug-button ug-button--accent" data-strata-face="raised"><span class="ug-button__label">Save</span></button>
+      <button type="button" class="ug-button" data-strata-face="raised"><span class="ug-button__label">Cancel</span></button>
+      <span class="ug-badge ug-badge--success" data-strata-face="flat">Active</span>
+      <span class="ug-chip" data-strata-face="raised"><span class="ug-chip__label">Design</span></span>
+      <span class="ug-status-light" data-strata-colour="success" role="img" aria-label="Link up"><span class="ug-status-light__object" aria-hidden="true"><span class="ug-status-light__socket"></span><span class="ug-status-light__lens" data-strata-face="knob"></span></span></span>
+    </div>
+    <div class="rowx">
+      <label class="ug-switch"><input id="strata-switch" class="ug-switch__input" data-strata-face="well" type="checkbox" role="switch"><span class="ug-switch__knob" data-strata-face="knob" aria-hidden="true"></span><span class="ug-switch__label">Wi-Fi</span></label>
+      <label class="ug-checkbox"><input id="strata-check" class="ug-checkbox__input" data-strata-face="well" type="checkbox"><span class="ug-checkbox__mark" data-strata-face="mark" aria-hidden="true"></span><span class="ug-checkbox__label">Newsletter</span></label>
+    </div>
+    <input id="strata-email" class="ug-text-field" data-strata-face="well" type="email" aria-label="Email">
+    <input type="range" class="ug-slider" data-strata-face="groove" min="0" max="100" value="40" aria-label="Volume">
+    <progress class="ug-progress" data-strata-face="groove" value="40" max="100" aria-label="Upload"></progress>
+    <fieldset class="ug-segmented"><legend class="ug-segmented__legend">View</legend><div class="ug-segmented__plinth">
+      <label class="ug-segmented__item"><input class="ug-segmented__input" type="radio" name="view" value="day" checked><span class="ug-segmented__key" data-strata-face="raised">Day</span></label>
+      <label class="ug-segmented__item"><input class="ug-segmented__input" type="radio" name="view" value="week"><span class="ug-segmented__key" data-strata-face="raised">Week</span></label>
+      <label class="ug-segmented__item"><input class="ug-segmented__input" type="radio" name="view" value="month" disabled><span class="ug-segmented__key" data-strata-face="raised">Month</span></label>
+    </div></fieldset>
+    <div class="rowx">
+      <span class="ug-display ug-display--input" data-strata-backlight="accent" data-strata-form="display"><span class="ug-display__object" aria-hidden="true"><span class="ug-display__bezel" data-strata-face="groove"><span class="ug-display__window" data-strata-face="flat"></span></span></span><input id="strata-display" class="ug-display__text" type="text" aria-label="Note"></span>
+      <div class="ug-meter ug-meter--bar" style="--strata-meter-value: 0.62; --strata-meter-count: 8;"><div class="ug-meter__body"><span class="ug-meter__object" aria-hidden="true"><span class="ug-meter__window" data-strata-face="well"><span class="ug-meter__segments">
+        <span class="ug-meter__segment" data-strata-face="knob" data-strata-zone="good" style="--_i: 0;"></span><span class="ug-meter__segment" data-strata-face="knob" data-strata-zone="good" style="--_i: 1;"></span><span class="ug-meter__segment" data-strata-face="knob" data-strata-zone="good" style="--_i: 2;"></span><span class="ug-meter__segment" data-strata-face="knob" data-strata-zone="good" style="--_i: 3;"></span><span class="ug-meter__segment" data-strata-face="knob" data-strata-zone="good" style="--_i: 4;"></span><span class="ug-meter__segment" data-strata-face="knob" data-strata-zone="good" style="--_i: 5;"></span><span class="ug-meter__segment" data-strata-face="knob" data-strata-zone="warn" style="--_i: 6;"></span><span class="ug-meter__segment" data-strata-face="knob" data-strata-zone="bad" style="--_i: 7;"></span>
+      </span></span></span></div></div>
+    </div>
+  </div>
+</div>
+<div id="output"><canvas id="out" width="1" height="1"></canvas></div>
+<script type="module" src="dist/harness.js"></script>
+</body>
+</html>
