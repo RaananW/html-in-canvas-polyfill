@@ -41,9 +41,9 @@ export interface PolyfillStatus {
 const BASE_LIMITATIONS = [
   'Snapshots are taken asynchronously; drawn images lag DOM changes by at least one frame.',
   'Canvas children are moved into a sibling host element; selectors such as `canvas > *` no longer match them.',
-  'No caret, selection highlight, or IME composition in snapshots.',
+  'IME composition, and selections inside shadow trees, are not drawn in snapshots.',
   'Cross-origin images and fonts without CORS are omitted from snapshots.',
-  ':hover and :active styles are not reflected in snapshots.',
+  ':active set from the keyboard is not reflected in snapshots.',
   'Form controls are drawn without platform theming in WebKit and Firefox.',
   'Hit testing uses CSS transforms and clip-path on the live elements; ancestor clips and perspective are not undone.',
   'Events from drawn elements bubble through the sibling host, not through the canvas.',

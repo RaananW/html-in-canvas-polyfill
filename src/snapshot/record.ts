@@ -2,7 +2,11 @@ import type { SnapshotResult } from './serializer';
 
 /** A ref-counted snapshot shared by the canvas and any ElementImage. */
 export class SnapshotRecord {
-  readonly bitmap: ImageBitmap | null;
+  private readonly on: ImageBitmap | null;
+  /** The snapshot with its caret hidden, when it has a caret. */
+  readonly caretOff: ImageBitmap | null;
+  /** The blink phase: true while the caret is hidden. */
+  caretHidden = false;
   /** Bitmap size in canvas grid pixels. */
   readonly width: number;
   readonly height: number;
@@ -21,7 +25,8 @@ export class SnapshotRecord {
     /** The element the snapshot was taken of. */
     readonly element: Element,
   ) {
-    this.bitmap = result.bitmap;
+    this.on = result.bitmap;
+    this.caretOff = result.caretOff ?? null;
     this.width = result.width;
     this.height = result.height;
     this.cssWidth = result.cssWidth;
@@ -30,12 +35,20 @@ export class SnapshotRecord {
     this.defaultHeight = result.cssHeight * scaleY;
   }
 
+  /** The bitmap to draw in the current blink phase. */
+  get bitmap(): ImageBitmap | null {
+    return this.caretHidden && this.caretOff ? this.caretOff : this.on;
+  }
+
   retain(): this {
     this.refs++;
     return this;
   }
 
   release(): void {
-    if (--this.refs === 0) this.bitmap?.close();
+    if (--this.refs === 0) {
+      this.on?.close();
+      this.caretOff?.close();
+    }
   }
 }

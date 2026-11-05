@@ -5,6 +5,15 @@
 // behind these choices.
 
 import { toBitmap } from './bitmap';
+import {
+  CARET_VAR,
+  caretBefore,
+  cloneText,
+  controlOverlay,
+  readSelection,
+  resetSelectionCaches,
+  type SelectionState,
+} from './selection';
 
 export interface SnapshotOptions {
   /** Device pixels per CSS pixel, per axis. */
@@ -24,6 +33,8 @@ export interface SnapshotOptions {
 export interface SnapshotResult {
   /** Null when the element has an empty border box. */
   bitmap: ImageBitmap | null;
+  /** The same snapshot without the caret, when it has one (the other blink phase). */
+  caretOff?: ImageBitmap | null;
   /** Bitmap size in device pixels. */
   width: number;
   height: number;
@@ -48,6 +59,7 @@ export function resetCaches(): void {
   defaultStyleCache.clear();
   sandbox?.remove();
   sandbox = null;
+  resetSelectionCaches();
 }
 
 function getSandboxDoc(): Document {
@@ -151,6 +163,10 @@ interface CloneContext {
   pseudoRules: string[];
   families: Set<string>;
   warnings: string[];
+  root: Element;
+  sel: SelectionState;
+  /** Markup drawn over the root (text-control carets and selections). */
+  overlays: string[];
 }
 
 const INHERITED_PREFIXES = ['font', 'text-', '-webkit-text-', 'list-style', 'fill', 'stroke', 'marker', 'white-space', 'word-', 'letter-', 'line-', 'hyphen', 'ruby', 'math-'];
@@ -312,7 +328,7 @@ function cloneNode(
   ctx: CloneContext,
   isRoot: boolean,
 ): Node | null {
-  if (src.nodeType === Node.TEXT_NODE) return src.cloneNode(false);
+  if (src.nodeType === Node.TEXT_NODE) return cloneText(src as Text, ctx.sel);
   if (src.nodeType !== Node.ELEMENT_NODE) return null;
   const el = src as Element;
   if (el.localName === 'script' || el.localName === 'style' || el.localName === 'noscript') return null;
@@ -411,12 +427,18 @@ function cloneNode(
     target.setAttribute('style', `transform:translate(${-el.scrollLeft}px,${-el.scrollTop}px)`);
     clone.appendChild(target);
   }
-  for (const child of flatChildren(el)) {
+  const children = flatChildren(el);
+  children.forEach((child, i) => {
+    const caret = caretBefore(el, i, ctx.sel);
+    if (caret) target.appendChild(caret);
     const c = cloneNode(child, csMap, ctx, false);
     if (c) target.appendChild(c);
-  }
+  });
+  const caret = caretBefore(el, children.length, ctx.sel);
+  if (caret) target.appendChild(caret);
   // After children so <option> clones exist.
   copyFormState(el, clone);
+  if (el === ctx.sel.control) ctx.overlays.push(controlOverlay(ctx.sel.control, ctx.root, ctx.sel));
   return clone;
 }
 
@@ -518,25 +540,33 @@ export async function snapshot(el: Element, opts: SnapshotOptions): Promise<Snap
     pseudoRules: [],
     families: new Set(),
     warnings,
+    root: el,
+    sel: readSelection(),
+    overlays: [],
   };
   const clone = cloneNode(el, null, ctx, true) as Element;
   const sheetRules = sheetCss(scan, ctx.families, warnings);
   await Promise.all(ctx.pending);
   const css = `${(await sheetRules).join('\n')}\n${ctx.pseudoRules.join('\n')}`;
 
-  const body = new XMLSerializer().serializeToString(clone);
-  const svg =
+  const body = new XMLSerializer().serializeToString(clone) + ctx.overlays.join('');
+  const svgFor = (caret: string) =>
     // Scale with a CSS transform rather than viewBox: WebKit rasterizes
     // foreignObject content at 1x and ignores the viewBox scale.
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
     `<foreignObject x="0" y="0" width="${width}" height="${height}">` +
-    `<div xmlns="${XHTML_NS}" style="width:${cssWidth}px;height:${cssHeight}px;` +
+    `<div xmlns="${XHTML_NS}" style="width:${cssWidth}px;height:${cssHeight}px;${CARET_VAR}:${caret};` +
     `transform:scale(${width / cssWidth},${height / cssHeight});transform-origin:0 0">` +
     `<style>${escapeXmlText(css)}</style>${body}</div></foreignObject></svg>`;
-  // Data URLs only: blob URLs taint the canvas in Chromium and WebKit.
-  const img = new Image(width, height);
-  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-  await img.decode();
-  const bitmap = await toBitmap(img, width, height);
-  return { bitmap, width, height, cssWidth, cssHeight, svg: opts.keepSvg ? svg : undefined, warnings };
+  const render = async (svg: string) => {
+    // Data URLs only: blob URLs taint the canvas in Chromium and WebKit.
+    const img = new Image(width, height);
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    await img.decode();
+    return toBitmap(img, width, height);
+  };
+  const caret = ctx.sel.caretColor;
+  const svg = svgFor(caret ?? 'transparent');
+  const [bitmap, caretOff] = await Promise.all([render(svg), caret ? render(svgFor('transparent')) : null]);
+  return { bitmap, caretOff, width, height, cssWidth, cssHeight, svg: opts.keepSvg ? svg : undefined, warnings };
 }

@@ -207,3 +207,87 @@ test('draws open shadow trees with slotted content, and redraws on shadow change
     after: [255, 255, 0, 255],
   });
 });
+
+// Selection highlights and carets. The field is drawn at 2x; with 20px
+// monospace text after 5px of border and padding, characters 1-3 span grid
+// columns 34-81 and the caret after character 3 covers columns 82-83.
+type SelectionScenario = 'div' | 'input' | 'editable-caret' | 'input-caret';
+async function selectionScenario(page: import('@playwright/test').Page, kind: SelectionScenario) {
+  return page.evaluate(async (kind) => {
+    const style = 'font:20px monospace;width:180px;border:1px solid black;padding:4px;outline:none;caret-color:rgb(255,0,0)';
+    const field = kind.startsWith('input')
+      ? `<input id="f" style="${style}" value="abcdef">`
+      : `<div id="f" ${kind === 'div' ? '' : 'contenteditable'} style="${style}">abcdef</div>`;
+    document.body.innerHTML = `<canvas id="c" width="400" height="200" content="drawable" style="width:200px;height:100px"><div id="a" drawable style="width:200px;height:100px;background:white">${field}</div></canvas>`;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    const ctx = c.getContext('2d', { willReadFrequently: true })!;
+    const frames: Array<{ t: number; highlight: number[]; outside: number[]; caret: number[] }> = [];
+    const t0 = performance.now();
+    c.onpaint = () => {
+      ctx.reset();
+      ctx.drawElementImage(document.getElementById('a')!, 0, 0);
+      const data = ctx.getImageData(0, 0, 400, 200).data;
+      const px = (x: number, y: number) => Array.from(data.slice((y * 400 + x) * 4, (y * 400 + x) * 4 + 3));
+      const caret: number[] = [];
+      for (let x = 0; x < 400; x++) {
+        const [r, g, b] = px(x, 34);
+        if (r! > 200 && g! < 60 && b! < 60) caret.push(x);
+      }
+      frames.push({ t: performance.now() - t0, highlight: px(60, 14), outside: px(100, 14), caret });
+    };
+    while (frames.length === 0) await new Promise((r) => setTimeout(r, 20));
+    const initial = frames.length;
+    const f = document.getElementById('f') as HTMLInputElement;
+    f.focus();
+    const [start, end] = kind.endsWith('caret') ? [3, 3] : [1, 3];
+    if (kind.startsWith('input')) f.setSelectionRange(start, end);
+    else {
+      const r = document.createRange();
+      r.setStart(f.firstChild!, start);
+      r.setEnd(f.firstChild!, end);
+      getSelection()!.removeAllRanges();
+      getSelection()!.addRange(r);
+    }
+    await new Promise((r) => setTimeout(r, 1300));
+    const after = frames.slice(initial);
+    // Clearing the selection removes the highlight.
+    if (kind.startsWith('input')) f.setSelectionRange(0, 0);
+    getSelection()!.removeAllRanges();
+    f.blur();
+    await new Promise((r) => setTimeout(r, 300));
+    return { hasFocus: document.hasFocus(), initial: frames[initial - 1], after, cleared: frames.at(-1) };
+  }, kind);
+}
+
+const HIGHLIGHT = [179, 215, 254];
+const WHITE = [255, 255, 255];
+const near = (a: number[] | undefined, b: number[]) => !!a && a.every((v, i) => Math.abs(v - b[i]!) <= 4);
+
+for (const kind of ['div', 'input'] as const) {
+  test(`draws the selection highlight in ${kind === 'div' ? 'text' : 'a text input'}`, async ({ page }) => {
+    const result = await selectionScenario(page, kind);
+    expect(near(result.initial?.highlight, WHITE)).toBe(true);
+    const selected = result.after.find((f) => near(f.highlight, HIGHLIGHT));
+    expect(selected, JSON.stringify(result.after)).toBeTruthy();
+    expect(near(selected!.outside, WHITE)).toBe(true);
+    expect(selected!.caret).toEqual([]);
+    expect(near(result.cleared?.highlight, WHITE)).toBe(true);
+  });
+}
+
+for (const kind of ['input-caret', 'editable-caret'] as const) {
+  test(`draws a blinking caret in ${kind === 'input-caret' ? 'a text input' : 'contenteditable'}`, async ({ page }) => {
+    const result = await selectionScenario(page, kind);
+    test.skip(!result.hasFocus, 'carets are only drawn while the document has focus');
+    expect(result.initial?.caret).toEqual([]);
+    const on = result.after.findIndex((f) => f.caret.length > 0);
+    expect(on, JSON.stringify(result.after)).toBeGreaterThanOrEqual(0);
+    expect(result.after[on]!.caret).toEqual([82, 83]);
+    // The caret toggles about every 500ms, with a paint event each time.
+    const off = result.after.slice(on).find((f) => f.caret.length === 0);
+    expect(off).toBeTruthy();
+    expect(off!.t - result.after[on]!.t).toBeGreaterThan(350);
+    expect(off!.t - result.after[on]!.t).toBeLessThan(700);
+    expect(result.cleared?.caret).toEqual([]);
+  });
+}

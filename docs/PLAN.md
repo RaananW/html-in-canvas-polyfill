@@ -48,8 +48,8 @@ sized to the canvas content box. There are two modes:
 
 ## Known limitations (document them, don't fight them)
 
-- No caret, selection highlight, or IME composition rendering in snapshots.
-  The caret could be faked later.
+- No IME composition rendering in snapshots. (Phase 4 added the caret and
+  selection highlight.)
 - Snapshots are async, so the drawn image is about one frame stale after a
   change. The spec already says "draws last snapshot", so this fits.
 - Serialization cost is roughly 5–50 ms for complex trees. That is fine for
@@ -148,8 +148,19 @@ sized to the canvas content box. There are two modes:
    This phase also fixed `paint` firing after `requestPaint()` before a
    newly added child's first snapshot was ready. Underglass's admission
    probe found it.
-4. **Fidelity**: fonts, pseudo-elements, form state, interaction-state
-   mirroring, scroll offsets, optional fake caret.
+4. **Fidelity (done)**: `:hover`/`:active`, open shadow trees with slotted
+   content, text-input scroll offsets and masked passwords, and the
+   selection highlight and blinking caret. Fonts, pseudo-elements, and other
+   form state were already drawn in phase 1. Native Chromium is the oracle:
+   - Selected text gets the `Highlight` system color,
+     `rgba(128,188,254,0.6)` (`rgb(179,215,254)` over white), and keeps its
+     text color, in text, inputs, and editing hosts alike.
+   - The caret is 1 CSS px wide, as tall as the font's content area, at the
+     character boundary. It shows first, then toggles every 500 ms with a
+     `paint` event each time. The polyfill matches the highlight's bounds and
+     the caret's columns exactly in Chromium and WebKit.
+   - WebKit draws themed form controls without their theme in SVG images, so
+     visual tests use `appearance: none` fields.
 5. **Testing**: Playwright on chromium/firefox/webkit. Pixel-tolerance
    comparison against native Chrome-with-flag baselines. Run the WICG demos and
    [Underglass](https://github.com/RaananW/underglass) (including its Strata

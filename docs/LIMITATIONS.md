@@ -121,7 +121,13 @@ computed styles, fonts, images, and form state, then decoded into an
   `element.animate()`, pixels of a nested canvas) aren't picked up until
   something else changes. `requestPaint()` fires `paint` but doesn't take
   new snapshots; to force one, change an attribute on the element.
-- There's no caret, selection highlight, or IME composition.
+- The selection highlight and the caret are drawn, using `::selection`
+  colors (or the `Highlight` system color) and `caret-color`. The caret
+  blinks every 500 ms while the document has focus, firing `paint` on each
+  blink, like native. Only the first selection range is drawn; selections
+  inside shadow trees and IME composition aren't. Selections in a text
+  control are measured on a hidden copy of its text and blended over it;
+  that ignores transforms between the control and the drawn element.
 - Text inputs are drawn at their horizontal scroll position. Password inputs
   are drawn as dots, without putting the value in the snapshot. Textareas are
   drawn unscrolled; indeterminate checkboxes and file inputs' chosen file names

@@ -29,6 +29,9 @@ const BLOCKIFY: Record<string, string> = {
 
 export const BLOCKIFY_ATTR = 'data-hic-blockify';
 
+/** Native caret blink half-period. */
+const CARET_BLINK_MS = 500;
+
 export interface StateCallbacks {
   schedule(): void;
   onError(error: unknown): void;
@@ -54,6 +57,12 @@ export class CanvasState {
   private structureChanged = true;
   private readonly resizeObserver: ResizeObserver;
   private readonly listeners: Array<[string, EventListener]> = [];
+  private readonly onSelectionChange: () => void;
+  /** Drawables in the last selection, which need a redraw when it moves. */
+  private selected = new Set<Element>();
+  /** Committed records whose caret blink phase flipped since the last paint. */
+  private readonly blinked = new Set<Element>();
+  private blinkTimer: ReturnType<typeof setInterval> | undefined;
   readonly geometry: Geometry;
   scaleX = 1;
   scaleY = 1;
@@ -127,6 +136,8 @@ export class CanvasState {
       this.listeners.push([type, type.endsWith('start') || type.endsWith('run') ? animationStart : markTarget]);
     }
     for (const [type, fn] of this.listeners) this.host.addEventListener(type, fn, true);
+    this.onSelectionChange = () => this.selectionChanged();
+    canvas.ownerDocument.addEventListener('selectionchange', this.onSelectionChange, true);
 
     this.layoutHost();
     this.callbacks.schedule();
@@ -189,6 +200,50 @@ export class CanvasState {
     for (let n: Node | null = el; n && n !== this.host; n = composedParent(n)) {
       if (isElement(n) && this.isDrawable(n)) this.dirty.add(n);
     }
+  }
+
+  /** Redraws the drawables a selection or caret left and the ones it entered. */
+  private selectionChanged(): void {
+    const now = new Set<Element>();
+    let active = this.canvas.ownerDocument.activeElement;
+    while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+    const sel = getSelection();
+    const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+    // Text controls keep their selection out of the document selection.
+    const control =
+      (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) && active.selectionStart !== null;
+    if (active && control) {
+      const d = this.drawableFor(active);
+      if (d) now.add(d);
+    }
+    if (range && !range.collapsed) {
+      for (const d of this.observed) if (range.intersectsNode(d)) now.add(d);
+    } else if (range && this.host.contains(range.startContainer)) {
+      // Only editing hosts draw a collapsed selection (the caret).
+      const parent = isElement(range.startContainer) ? range.startContainer : range.startContainer.parentElement;
+      const d = parent instanceof HTMLElement && parent.isContentEditable ? this.drawableFor(parent) : null;
+      if (d) now.add(d);
+    }
+    for (const d of this.selected) this.dirty.add(d);
+    for (const d of now) this.dirty.add(d);
+    this.selected = now;
+    if (this.dirty.size > 0) this.callbacks.schedule();
+  }
+
+  /** Restarts the caret blink, visible first, while any committed snapshot has a caret. */
+  private restartBlink(): void {
+    clearInterval(this.blinkTimer);
+    this.blinkTimer = undefined;
+    for (const record of this.snapshots.values()) record.caretHidden = false;
+    if (![...this.snapshots.values()].some((r) => r.caretOff)) return;
+    this.blinkTimer = setInterval(() => {
+      for (const [el, record] of this.snapshots) {
+        if (!record.caretOff) continue;
+        record.caretHidden = !record.caretHidden;
+        this.blinked.add(el);
+      }
+      if (this.blinked.size > 0) this.callbacks.schedule();
+    }, CARET_BLINK_MS);
   }
 
   markAll(): void {
@@ -342,7 +397,7 @@ export class CanvasState {
 
     // Like native, every drawable has a paint record by the time paint fires.
     const firstCapture = [...this.inFlight].some((el) => !this.snapshots.has(el) && !this.ready.has(el));
-    if ((this.ready.size > 0 || this.paintRequested) && !firstCapture) this.dispatchPaint();
+    if ((this.ready.size > 0 || this.blinked.size > 0 || this.paintRequested) && !firstCapture) this.dispatchPaint();
     return this.inFlight.size > 0 || this.dirty.size > 0 || this.animating.size > 0;
   }
 
@@ -360,6 +415,7 @@ export class CanvasState {
         (result) => {
           if (!this.observed.has(el)) {
             result.bitmap?.close();
+            result.caretOff?.close();
             return;
           }
           this.ready.get(el)?.release();
@@ -375,12 +431,16 @@ export class CanvasState {
   }
 
   private dispatchPaint(): void {
+    const caretChanged = [...this.ready].some(([el, r]) => r.caretOff || this.snapshots.get(el)?.caretOff);
     for (const [el, record] of this.ready) {
       this.snapshots.get(el)?.release();
       this.snapshots.set(el, record);
     }
-    const changedElements = reverseTreeOrder(this.ready.keys());
+    // A new caret starts visible, like native after typing or moving it.
+    if (caretChanged) this.restartBlink();
+    const changedElements = reverseTreeOrder(new Set([...this.ready.keys(), ...this.blinked]));
     this.ready.clear();
+    this.blinked.clear();
     this.paintRequested = false;
     this.canvas.dispatchEvent(new CanvasPaintEvent('paint', { changedElements }));
   }
@@ -388,6 +448,8 @@ export class CanvasState {
   destroy(): void {
     this.geometry.destroy();
     this.resizeObserver.disconnect();
+    clearInterval(this.blinkTimer);
+    this.canvas.ownerDocument.removeEventListener('selectionchange', this.onSelectionChange, true);
     for (const [type, fn] of this.listeners) this.host.removeEventListener(type, fn, true);
     for (const record of this.snapshots.values()) record.release();
     for (const record of this.ready.values()) record.release();

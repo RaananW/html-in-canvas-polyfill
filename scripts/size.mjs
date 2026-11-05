@@ -12,7 +12,7 @@ const result = await build({
 const code = result.outputFiles[0].contents;
 const gz = gzipSync(code, { level: 9 }).length;
 console.log(`min: ${(code.length / 1024).toFixed(1)} KB, min+gzip: ${(gz / 1024).toFixed(1)} KB`);
-const budget = Number(process.env.SIZE_BUDGET_KB ?? 16);
+const budget = Number(process.env.SIZE_BUDGET_KB ?? 18);
 if (gz / 1024 > budget) {
   console.error(`over budget (${budget} KB)`);
   process.exit(1);
