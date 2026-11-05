@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>html-in-canvas-polyfill test page</title>
+<style>
+  body { margin: 0; font: 16px/1.2 sans-serif; }
+  canvas { display: block; width: 200px; height: 100px; }
+</style>
+<script type="module">
+  import * as polyfill from '/dist/index.js';
+  const force = new URLSearchParams(location.search).has('force');
+  window.__polyfill = polyfill;
+  window.__status = polyfill.install({ force });
+  window.__ready = true;
+</script>

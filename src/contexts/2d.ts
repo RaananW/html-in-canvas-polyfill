@@ -9,7 +9,12 @@ type AnyCanvas = HTMLCanvasElement | OffscreenCanvas;
 export function recordFor(canvas: AnyCanvas, source: unknown): SnapshotRecord {
   if (source instanceof ElementImage) return elementImageRecord(source);
   if (!isElement(source)) throw new TypeError("The provided value is not of type '(Element or ElementImage)'.");
+  if (!(canvas instanceof HTMLCanvasElement) || canvas.content !== 'drawable') {
+    throw invalidState('DrawElementImage requires the canvas to have the content=drawable attribute.');
+  }
   const state = nearestState(source);
+  // Children not yet moved into a host (same task as insertion) have no snapshot yet.
+  if (!state && source.parentElement === canvas) throw invalidState('No cached paint record for element.');
   if (!state || state.canvas !== canvas) {
     throw invalidState('The element can only be drawn into its nearest ancestor <canvas>.');
   }

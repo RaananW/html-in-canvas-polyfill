@@ -2,7 +2,10 @@ import { patch, unpatch } from './api';
 import { start, stop } from './runtime';
 import { snapshotsTaint } from './snapshot/bitmap';
 
+import './types';
+
 export { ElementImage } from './element-image';
+export type { CanvasContent, DrawElementImageOptions, ElementImageSize } from './types';
 export { CanvasPaintEvent, type CanvasPaintEventInit } from './paint/event';
 
 export const VERSION = '0.0.0';

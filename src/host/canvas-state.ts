@@ -73,8 +73,15 @@ export class CanvasState {
     }
     hostStates.set(this.host, this);
 
+    // Observation always reports an initial size; only real changes matter.
+    const sizes = new WeakMap<Element, string>();
     this.resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
+        const box = entry.borderBoxSize?.[0];
+        const size = box ? `${box.inlineSize}x${box.blockSize}` : `${entry.contentRect.width}x${entry.contentRect.height}`;
+        const previous = sizes.get(entry.target);
+        sizes.set(entry.target, size);
+        if (previous === undefined || previous === size) continue;
         if (entry.target === this.canvas) this.allDirty = true;
         else this.markWithAncestors(entry.target);
       }
