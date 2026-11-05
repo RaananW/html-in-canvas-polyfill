@@ -70,3 +70,56 @@ test('snapshots text, borders and nested drawables', async ({ page }) => {
   // Nested drawables are excluded from the parent's snapshot.
   expect(result.hole).toEqual([255, 255, 0, 255]);
 });
+
+test('authoring mode lays out an existing host without moving children', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    document.body.innerHTML = `
+      <canvas id="c" width="400" height="200" content="drawable"></canvas>
+      <div data-hic-host="c"><div id="a" drawable style="width:50px;height:20px;background:rgb(255,0,0)"></div></div>`;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    const host = c.nextElementSibling as HTMLElement;
+    const event = await new Promise<CanvasPaintEvent>((r) => c.addEventListener('paint', r as EventListener, { once: true }));
+    const ctx = c.getContext('2d', { willReadFrequently: true })!;
+    const a = document.getElementById('a')!;
+    ctx.drawElementImage(a, 0, 0);
+    const cr = c.getBoundingClientRect();
+    const hr = host.getBoundingClientRect();
+    return {
+      changed: event.changedElements.map((e) => e.id),
+      parent: a.parentElement === host,
+      generated: document.querySelectorAll('[data-hic-host]').length,
+      offset: [hr.left - cr.left, hr.top - cr.top, hr.width, hr.height],
+      pixel: Array.from(ctx.getImageData(10, 10, 1, 1).data),
+    };
+  });
+  expect(result.changed).toEqual(['a']);
+  expect(result.parent).toBe(true);
+  expect(result.generated).toBe(1);
+  expect(result.offset).toEqual([0, 0, 200, 100]);
+  expect(result.pixel).toEqual([255, 0, 0, 255]);
+});
+
+test('getElementImageDefaultSize returns grid pixels', async ({ page }) => {
+  const result = await page.evaluate(async (html) => {
+    document.body.innerHTML = html;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    await new Promise((r) => c.addEventListener('paint', r, { once: true }));
+    const a = document.getElementById('a')!;
+    const image = c.captureElementImage(a);
+    return [c.getElementImageDefaultSize(a), c.getElementImageDefaultSize(image)];
+  }, BASIC);
+  expect(result).toEqual([
+    { width: 100, height: 40 },
+    { width: 100, height: 40 },
+  ]);
+});
+
+test('the script build installs and reports status', async ({ page }) => {
+  await page.goto('/tests/browser/fixtures/iife.html');
+  const status = await page.evaluate(() => {
+    const s = (window as unknown as { HTMLInCanvasPolyfill: { polyfilled: boolean; limitations: string[] } })
+      .HTMLInCanvasPolyfill;
+    return { polyfilled: s.polyfilled, limitations: s.limitations.length > 0, api: typeof CanvasRenderingContext2D.prototype.drawElementImage };
+  });
+  expect(status).toEqual({ polyfilled: true, limitations: true, api: 'function' });
+});

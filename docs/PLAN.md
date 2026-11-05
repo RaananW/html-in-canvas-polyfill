@@ -81,10 +81,28 @@ sized to the canvas content box. There are two modes:
    and WebGL/WebGPU upload. Decide: own serializer vs build on
    `modern-screenshot` / `html-to-image`. Outcome: own serializer, starting
    from `spike/src/serializer.ts`.
-1. **Core 2D**: feature detection (respect native, including the
-   ElementCanvasTransform geometry probe used in BabylonHTML), host setup,
-   snapshot engine with resource cache, `ElementImage`, `drawElementImage`,
-   `paint` / `requestPaint`, default size.
+1. **Core 2D (done)**: feature detection (respect native), host setup
+   (auto and authoring modes), snapshot engine with resource cache,
+   `ElementImage`, `drawElementImage`, `paint` / `requestPaint`, default
+   size. Conformance tests run against native Chromium 156 with the flag.
+   A Strata panel drawn by the polyfill differs from the live DOM in 0.03%
+   of pixels in Chromium and 0.67% in WebKit. Underglass needs phases 2–3
+   (geometry and WebGPU), so it isn't a phase-1 smoke test.
+
+   Native semantics found while testing (the polyfill follows them unless
+   noted):
+   - The `drawElementImage` source rectangle is in the element's CSS pixels.
+     The default destination size is the element's border box in canvas
+     grid pixels, before CSS transforms.
+   - Errors are `InvalidStateError`. The canvas `content=drawable` check
+     comes first, then the nearest-canvas check, then "no cached paint
+     record".
+   - Native Chromium 156 fires `paint` in tree order and includes
+     non-`drawable` children in `changedElements`. The polyfill follows the
+     spec (reverse tree order, drawables only).
+   - Native `drawElementImage` returns a `DOMMatrix`; the spec and the
+     polyfill return `undefined`. Native has no `getElementImageDefaultSize`
+     yet.
 2. **Geometry & interaction**: update/clear/getElementTransform, auto-geometry
    from 2D draws, overlay hit-testing, focus/a11y checks.
 3. **WebGL / WebGPU** upload paths.
@@ -138,4 +156,6 @@ size), Changesets for releases, npm publishing. License: MIT (to confirm).
 - ~~Own serializer vs a dependency~~ Decided: own serializer. It has better
   fidelity, is 5–40× faster on token-heavy pages, and is the smallest at
   3.9 KB. See [SPIKE.md](SPIKE.md).
-- Auto-relocate DOM (default) vs require the authoring-mode host (opt-in).
+- ~~Auto-relocate DOM vs authoring-mode host~~ Decided: both. Children
+  are moved into a generated host by default. A `<div data-hic-host>` right
+  after the canvas opts into authoring mode, for frameworks.
