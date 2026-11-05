@@ -1,5 +1,5 @@
-import { composedParent, computedStyle, isElement, reverseTreeOrder } from '../dom';
-import { cssClip, cssMatrix, isFiniteMatrix, localTransform } from './matrix';
+import { composedParent, computedStyle, isElement, reverseTreeOrder } from '../dom.js';
+import { cssClip, cssMatrix, isFiniteMatrix, localTransform } from './matrix.js';
 
 /** Marks elements with geometry; the value keys their overlay rule. */
 export const GEOMETRY_ATTR = 'data-hic-g';

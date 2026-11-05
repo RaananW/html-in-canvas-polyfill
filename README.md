@@ -1,4 +1,4 @@
-# html-in-canvas-polyfill
+# @underglass/html-in-canvas-polyfill
 
 An open-source, engine-agnostic polyfill for the WICG
 [HTML-in-Canvas](https://github.com/WICG/html-in-canvas) proposal. It aims to
@@ -21,19 +21,24 @@ its limitations clearly.
 
 ## Usage
 
+```sh
+npm install @underglass/html-in-canvas-polyfill
+```
+
 ```js
-import 'html-in-canvas-polyfill/auto';
+import '@underglass/html-in-canvas-polyfill/auto';
 ```
 
 or, with control over installation:
 
 ```js
-import { install } from 'html-in-canvas-polyfill';
+import { install } from '@underglass/html-in-canvas-polyfill';
 
 const status = install(); // { native, polyfilled, version, limitations }
 ```
 
-A `<script>` build is also available: `dist/html-in-canvas-polyfill.iife.js`.
+A `<script>` build is also available: `dist/html-in-canvas-polyfill.iife.js`
+(`@underglass/html-in-canvas-polyfill/iife`).
 In every case the polyfill does nothing when the browser supports
 HTML-in-Canvas natively. `install({ force: true })` overrides that for
 testing.

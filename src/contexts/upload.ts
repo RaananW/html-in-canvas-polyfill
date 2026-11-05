@@ -1,4 +1,4 @@
-import type { SnapshotRecord } from '../snapshot/record';
+import type { SnapshotRecord } from '../snapshot/record.js';
 
 /** The part of a snapshot to upload, and the size it's uploaded at. */
 export interface UploadRegion {

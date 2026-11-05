@@ -1,6 +1,6 @@
 {
-  "name": "html-in-canvas-polyfill",
-  "version": "0.0.0",
+  "name": "@underglass/html-in-canvas-polyfill",
+  "version": "0.1.0",
   "description": "Polyfill for the WICG HTML-in-Canvas proposal (drawElementImage, paint events, ElementImage).",
   "license": "MIT",
   "type": "module",
@@ -8,6 +8,8 @@
     "type": "git",
     "url": "git+https://github.com/RaananW/html-in-canvas-polyfill.git"
   },
+  "homepage": "https://github.com/RaananW/html-in-canvas-polyfill#readme",
+  "bugs": "https://github.com/RaananW/html-in-canvas-polyfill/issues",
   "keywords": [
     "html-in-canvas",
     "polyfill",
@@ -31,7 +33,10 @@
       "types": "./dist/types/auto.d.ts",
       "default": "./dist/auto.js"
     },
-    "./iife": "./dist/html-in-canvas-polyfill.iife.js"
+    "./iife": {
+      "types": "./dist/types/iife.d.ts",
+      "default": "./dist/html-in-canvas-polyfill.iife.js"
+    }
   },
   "files": [
     "dist",
@@ -39,7 +44,11 @@
     "LICENSE",
     "docs/LIMITATIONS.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
+    "prepublishOnly": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm size",
     "build": "node scripts/build.mjs && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",

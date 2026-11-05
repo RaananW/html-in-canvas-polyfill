@@ -1,8 +1,8 @@
-import { composedParent, computedStyle, HOST_ATTR, isElement, reverseTreeOrder } from '../dom';
-import { Geometry } from '../geometry/state';
-import { CanvasPaintEvent } from '../paint/event';
-import { SnapshotRecord } from '../snapshot/record';
-import { snapshot } from '../snapshot/serializer';
+import { composedParent, computedStyle, HOST_ATTR, isElement, reverseTreeOrder } from '../dom.js';
+import { Geometry } from '../geometry/state.js';
+import { CanvasPaintEvent } from '../paint/event.js';
+import { SnapshotRecord } from '../snapshot/record.js';
+import { snapshot } from '../snapshot/serializer.js';
 
 export type HostMode = 'auto' | 'authoring';
 

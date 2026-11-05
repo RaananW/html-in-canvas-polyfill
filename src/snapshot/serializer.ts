@@ -4,8 +4,8 @@
 // SVG and convert it to a bitmap. See docs/SPIKE.md for the measurements
 // behind these choices.
 
-import { computedStyle } from '../dom';
-import { toBitmap } from './bitmap';
+import { computedStyle } from '../dom.js';
+import { toBitmap } from './bitmap.js';
 import {
   CARET_VAR,
   caretBefore,
@@ -14,7 +14,7 @@ import {
   readSelection,
   resetSelectionCaches,
   type SelectionState,
-} from './selection';
+} from './selection.js';
 
 export interface SnapshotOptions {
   /** Device pixels per CSS pixel, per axis. */

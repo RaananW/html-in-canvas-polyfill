@@ -1,4 +1,4 @@
-import type { SnapshotResult } from './serializer';
+import type { SnapshotResult } from './serializer.js';
 
 /** A ref-counted snapshot shared by the canvas and any ElementImage. */
 export class SnapshotRecord {

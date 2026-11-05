@@ -6,7 +6,7 @@
 // Carets use `var(--hic-caret)`, so one serialized tree renders both blink
 // phases by changing the variable on the wrapper.
 
-import { computedStyle } from '../dom';
+import { computedStyle } from '../dom.js';
 
 const XHTML_NS = 'http://www.w3.org/1999/xhtml';
 

@@ -213,7 +213,7 @@ allows):
 ```
 src/
   index.ts            install() / uninstall() / feature detection
-  auto.ts             side-effect entry: import "html-in-canvas-polyfill/auto"
+  auto.ts             side-effect entry: import "@underglass/html-in-canvas-polyfill/auto"
   host/               canvas setup, relocation, overlay host
   snapshot/           serializer, resource inliner/cache, foreignObject → ImageBitmap
   paint/              dirty tracking, paint/requestPaint scheduling, CanvasPaintEvent
@@ -236,7 +236,8 @@ size), Changesets for releases, npm publishing. License: MIT (to confirm).
 ## Open decisions
 
 - ~~Repository owner/name and license~~ Decided:
-  `RaananW/html-in-canvas-polyfill`, MIT.
+  `RaananW/html-in-canvas-polyfill`, MIT, published on npm as
+  `@underglass/html-in-canvas-polyfill` (the unscoped name is taken).
 - ~~Own serializer vs a dependency~~ Decided: own serializer. It has better
   fidelity, is 5–40× faster on token-heavy pages, and is the smallest at
   3.9 KB. See [SPIKE.md](SPIKE.md).

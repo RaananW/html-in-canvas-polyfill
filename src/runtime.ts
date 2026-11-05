@@ -1,6 +1,6 @@
-import { HOST_ATTR, isElement } from './dom';
-import { GEOMETRY_ATTR } from './geometry/state';
-import { CanvasState, nearestState, stateForHost } from './host/canvas-state';
+import { HOST_ATTR, isElement } from './dom.js';
+import { GEOMETRY_ATTR } from './geometry/state.js';
+import { CanvasState, nearestState, stateForHost } from './host/canvas-state.js';
 
 const states = new Map<HTMLCanvasElement, CanvasState>();
 let observedRoots = new WeakSet<Node>();

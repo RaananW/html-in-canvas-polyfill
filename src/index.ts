@@ -1,10 +1,10 @@
-import { patch, unpatch } from './api';
-import { start, stop } from './runtime';
-import { snapshotsTaint } from './snapshot/bitmap';
+import { patch, unpatch } from './api.js';
+import { start, stop } from './runtime.js';
+import { snapshotsTaint } from './snapshot/bitmap.js';
 
-import './types';
+import './types.js';
 
-export { ElementImage } from './element-image';
+export { ElementImage } from './element-image.js';
 export type {
   CanvasContent,
   DrawElementImageOptions,
@@ -13,13 +13,13 @@ export type {
   GPUDrawElementImageSource,
   UpdateElementGeometryOptions,
   WebGLCopyElementImageConfig,
-} from './types';
+} from './types.js';
 export {
   CanvasPaintEvent,
   type CanvasPaintEventInit,
   ElementGeometryUpdateEvent,
   type ElementGeometryUpdateEventInit,
-} from './paint/event';
+} from './paint/event.js';
 
 export const VERSION = '0.0.0';
 

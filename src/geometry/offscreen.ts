@@ -1,7 +1,7 @@
-import { nearestState } from '../host/canvas-state';
-import { ElementGeometryUpdateEvent } from '../paint/event';
-import { getState } from '../runtime';
-import { flushGeometry, type GeometryUpdate } from './state';
+import { nearestState } from '../host/canvas-state.js';
+import { ElementGeometryUpdateEvent } from '../paint/event.js';
+import { getState } from '../runtime.js';
+import { flushGeometry, type GeometryUpdate } from './state.js';
 
 const placeholders = new WeakMap<OffscreenCanvas, HTMLCanvasElement>();
 

@@ -1,10 +1,10 @@
-import { invalidState, isElement } from '../dom';
-import { ElementImage, elementImageRecord } from '../element-image';
-import { drawMatrix, gridToCanvas } from '../geometry/matrix';
-import { placeholderOf, queueOffscreenGeometry } from '../geometry/offscreen';
-import { nearestState } from '../host/canvas-state';
-import { getState } from '../runtime';
-import type { SnapshotRecord } from '../snapshot/record';
+import { invalidState, isElement } from '../dom.js';
+import { ElementImage, elementImageRecord } from '../element-image.js';
+import { drawMatrix, gridToCanvas } from '../geometry/matrix.js';
+import { placeholderOf, queueOffscreenGeometry } from '../geometry/offscreen.js';
+import { nearestState } from '../host/canvas-state.js';
+import { getState } from '../runtime.js';
+import type { SnapshotRecord } from '../snapshot/record.js';
 
 type AnyCanvas = HTMLCanvasElement | OffscreenCanvas;
 

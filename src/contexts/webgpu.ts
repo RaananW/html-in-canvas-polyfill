@@ -1,9 +1,9 @@
-import { invalidState, isElement } from '../dom';
-import { ElementImage, elementImageRecord } from '../element-image';
-import { nearestState } from '../host/canvas-state';
-import type { SnapshotRecord } from '../snapshot/record';
-import type { GPUDrawElementImageDestination, GPUDrawElementImageSource } from '../types';
-import { allOrNone, isDirectCopy, rasterize, uploadRegion } from './upload';
+import { invalidState, isElement } from '../dom.js';
+import { ElementImage, elementImageRecord } from '../element-image.js';
+import { nearestState } from '../host/canvas-state.js';
+import type { SnapshotRecord } from '../snapshot/record.js';
+import type { GPUDrawElementImageDestination, GPUDrawElementImageSource } from '../types.js';
+import { allOrNone, isDirectCopy, rasterize, uploadRegion } from './upload.js';
 
 const fail = (message: string) =>
   new TypeError(`Failed to execute 'drawElementImageToTexture' on 'GPUQueue': ${message}`);

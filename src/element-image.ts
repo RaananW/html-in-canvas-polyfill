@@ -1,5 +1,5 @@
-import { invalidState } from './dom';
-import type { SnapshotRecord } from './snapshot/record';
+import { invalidState } from './dom.js';
+import type { SnapshotRecord } from './snapshot/record.js';
 
 const token = Symbol('ElementImage');
 const records = new WeakMap<ElementImage, SnapshotRecord | null>();

@@ -1,13 +1,13 @@
-import { drawElementImage, recordFor } from './contexts/2d';
-import { texElementSubImage2D } from './contexts/webgl';
-import { drawElementImageToTexture } from './contexts/webgpu';
-import { HOST_ATTR, invalidState, isElement } from './dom';
-import { createElementImage, ElementImage, elementImageRecord } from './element-image';
-import { linkPlaceholder, placeholderOf, queueOffscreenGeometry } from './geometry/offscreen';
-import { flushGeometry, geometryOf, type GeometryUpdate } from './geometry/state';
-import { autoCanvasOf, type CanvasState, nearestState } from './host/canvas-state';
-import { CanvasPaintEvent, ElementGeometryUpdateEvent } from './paint/event';
-import { getState, observeRoot, syncCanvas } from './runtime';
+import { drawElementImage, recordFor } from './contexts/2d.js';
+import { texElementSubImage2D } from './contexts/webgl.js';
+import { drawElementImageToTexture } from './contexts/webgpu.js';
+import { HOST_ATTR, invalidState, isElement } from './dom.js';
+import { createElementImage, ElementImage, elementImageRecord } from './element-image.js';
+import { linkPlaceholder, placeholderOf, queueOffscreenGeometry } from './geometry/offscreen.js';
+import { flushGeometry, geometryOf, type GeometryUpdate } from './geometry/state.js';
+import { autoCanvasOf, type CanvasState, nearestState } from './host/canvas-state.js';
+import { CanvasPaintEvent, ElementGeometryUpdateEvent } from './paint/event.js';
+import { getState, observeRoot, syncCanvas } from './runtime.js';
 
 type Restore = () => void;
 const restores: Restore[] = [];

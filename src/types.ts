@@ -1,5 +1,5 @@
-import type { ElementImage } from './element-image';
-import type { CanvasPaintEvent, ElementGeometryUpdateEvent } from './paint/event';
+import type { ElementImage } from './element-image.js';
+import type { CanvasPaintEvent, ElementGeometryUpdateEvent } from './paint/event.js';
 
 export type CanvasContent = 'fallback' | 'drawable';
 

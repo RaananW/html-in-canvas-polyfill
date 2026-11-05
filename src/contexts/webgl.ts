@@ -1,6 +1,6 @@
-import { recordFor } from './2d';
-import type { WebGLCopyElementImageConfig } from '../types';
-import { allOrNone, rasterize, uploadRegion } from './upload';
+import { recordFor } from './2d.js';
+import type { WebGLCopyElementImageConfig } from '../types.js';
+import { allOrNone, rasterize, uploadRegion } from './upload.js';
 
 type GL = WebGLRenderingContext | WebGL2RenderingContext;
 
