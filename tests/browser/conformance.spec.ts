@@ -92,6 +92,36 @@ test('reports changed elements after a style change and requestPaint', async ({ 
   expect(result.afterRequest).toEqual([]);
 });
 
+test('paint after requestPaint has records for children added in the same task', async ({ page }) => {
+  const result = await page.evaluate(async (html) => {
+    document.body.innerHTML = html;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    await new Promise((r) => c.addEventListener('paint', r, { once: true }));
+    const n = document.createElement('div');
+    n.id = 'n';
+    n.setAttribute('drawable', '');
+    n.style.cssText = 'width:10px;height:10px;background:rgb(0,0,255)';
+    c.append(n);
+    c.requestPaint();
+    return new Promise<number[] | string>((resolve) =>
+      c.addEventListener(
+        'paint',
+        () => {
+          try {
+            const ctx = c.getContext('2d', { willReadFrequently: true })!;
+            ctx.drawElementImage(n, 0, 0);
+            resolve(Array.from(ctx.getImageData(10, 10, 1, 1).data));
+          } catch (e) {
+            resolve(String(e));
+          }
+        },
+        { once: true },
+      ),
+    );
+  }, BASIC);
+  expect(result).toEqual([0, 0, 255, 255]);
+});
+
 test('throws InvalidStateError for undrawable sources', async ({ page }) => {
   const result = await page.evaluate(async (html) => {
     document.body.innerHTML =

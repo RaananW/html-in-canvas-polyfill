@@ -5,7 +5,15 @@ import { snapshotsTaint } from './snapshot/bitmap';
 import './types';
 
 export { ElementImage } from './element-image';
-export type { CanvasContent, DrawElementImageOptions, ElementImageSize, UpdateElementGeometryOptions } from './types';
+export type {
+  CanvasContent,
+  DrawElementImageOptions,
+  ElementImageSize,
+  GPUDrawElementImageDestination,
+  GPUDrawElementImageSource,
+  UpdateElementGeometryOptions,
+  WebGLCopyElementImageConfig,
+} from './types';
 export {
   CanvasPaintEvent,
   type CanvasPaintEventInit,
@@ -39,7 +47,8 @@ const BASE_LIMITATIONS = [
   'Form controls are drawn without platform theming in WebKit and Firefox.',
   'Hit testing uses CSS transforms and clip-path on the live elements; ancestor clips and perspective are not undone.',
   'Events from drawn elements bubble through the sibling host, not through the canvas.',
-  'WebGL and WebGPU are not implemented yet.',
+  'WebGL texElementSubImage2D uploads RGBA/UNSIGNED_BYTE data, so it needs an RGBA8 or SRGB8_ALPHA8 texture.',
+  'Element images cannot be transferred to workers, so worker WebGL and WebGPU uploads are unavailable.',
 ];
 
 let installed = false;

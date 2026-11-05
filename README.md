@@ -5,13 +5,14 @@ An open-source, engine-agnostic polyfill for the WICG
 work as well as possible in browsers without native support, and it documents
 its limitations clearly.
 
-> **Status:** phases 1 (core 2D) and 2 (element geometry) are done.
-> `content="drawable"`, `paint`, `requestPaint()`, `drawElementImage`,
-> `captureElementImage`, and `getElementImageDefaultSize` work in Chromium,
-> WebKit, and Firefox, and are checked against native Chromium.
-> `updateElementGeometry`, `clearElementGeometry`, and `getElementTransform`
-> make drawn elements clickable and focusable where they're drawn. WebGL and
-> WebGPU come next. See
+> **Status:** phases 1 (core 2D), 2 (element geometry), and 3 (WebGL and
+> WebGPU) are done. `content="drawable"`, `paint`, `requestPaint()`,
+> `drawElementImage`, `captureElementImage`, and `getElementImageDefaultSize`
+> work in Chromium, WebKit, and Firefox, and are checked against native
+> Chromium. `updateElementGeometry`, `clearElementGeometry`, and
+> `getElementTransform` make drawn elements clickable and focusable where
+> they're drawn. `texElementSubImage2D` and `drawElementImageToTexture` upload
+> elements to WebGL and WebGPU textures. Fidelity work comes next. See
 > [docs/PLAN.md](docs/PLAN.md) and [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
 
 ## Usage

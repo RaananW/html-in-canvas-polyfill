@@ -5,8 +5,9 @@ Target API: current WICG explainer (`content="drawable"`, `drawable`, `paint` /
 `texElementSubImage2D`, `GPUQueue.drawElementImageToTexture`,
 `updateElementGeometry` / `clearElementGeometry` / `getElementTransform`,
 `getElementImageDefaultSize`). Keep older names (`layoutsubtree`,
-`drawElement`, `texElementImage2D`, `copyElementImageToTexture`) as aliases;
-the spec is moving, so the API layer must stay thin.
+`drawElement`) as aliases; the spec is moving, so the API layer must stay
+thin. Native Chromium's `texElementImage2D` and `copyElementImageToTexture`
+have shapes the explainer doesn't define, so they aren't aliased.
 
 ## Core idea: two cooperating layers
 
@@ -39,8 +40,8 @@ sized to the canvas content box. There are two modes:
 | `requestPaint()` | force paint in next rAF |
 | `drawElementImage` (3 overloads) | `drawImage(bitmap, …)` scaled by DPR. Throws before the first snapshot, matching native behavior. Auto `updateElementGeometry` from `ctx.getTransform()` × dest rect unless `preserveElementGeometry` is set. |
 | `captureElementImage` / `ElementImage` | wrapper over `ImageBitmap`; `close()` releases it. Worker transfer only via an exposed bitmap helper. |
-| `texElementSubImage2D` | `texSubImage2D(target, level, x, y, RGBA, UNSIGNED_BYTE, bitmap)` |
-| `drawElementImageToTexture` | `queue.copyExternalImageToTexture({source: bitmap}, dest, size)` |
+| `texElementSubImage2D` | `texSubImage2D(target, level, x, y, RGBA, UNSIGNED_BYTE, canvas)`; the snapshot is drawn into a 2D canvas first, because WebGL ignores `UNPACK_*` flags for `ImageBitmap` sources |
+| `drawElementImageToTexture` | `queue.copyExternalImageToTexture({source: bitmap, origin}, dest, size)`; cropped or scaled uploads go through a 2D canvas |
 | `updateElementGeometry` / `clear` / `getElementTransform` | store matrix; apply CSS transform (canvas CSS-px scale × matrix) and `clip-path`; `preserveHitTestOrder` → z-index stack |
 | `getElementImageDefaultSize` | border-box × (canvas.width / clientWidth) |
 | `elementgeometryupdate` | microtask-batched event (OffscreenCanvas path minimal) |
@@ -125,7 +126,28 @@ sized to the canvas content box. There are two modes:
    - The wrong-canvas error is `InvalidStateError`: "The element can only be
      drawn into its nearest ancestor <canvas>." The polyfill uses the same
      message.
-3. **WebGL / WebGPU** upload paths.
+3. **WebGL / WebGPU** upload paths. **Done.** `texElementSubImage2D` on
+   WebGL and WebGL2 and `GPUQueue.drawElementImageToTexture` pass the same
+   tests in the polyfill (Chromium, WebKit) and in native Chromium. Underglass's
+   GPU admission probe (`createAdmissionProbe`, `drawElementImageToTexture`,
+   `verifyProbePixels`) passes in Chromium and WebKit with real WebGPU.
+
+   Native Chromium 156 behavior the polyfill matches:
+   - The default upload is the border box in grid pixels. Source rectangles
+     are in CSS pixels; the destination defaults to the source in grid
+     pixels, and `width`/`height` (WebGL) or `size` (WebGPU) scale it.
+   - Partly given source rectangles, and WebGL `width` without `height`,
+     throw `OperationError`.
+   - WebGL respects `UNPACK_FLIP_Y_WEBGL` and `UNPACK_PREMULTIPLY_ALPHA_WEBGL`,
+     and an upload past the texture edge sets `INVALID_VALUE`.
+   - WebGPU uploads unpremultiplied by default and respects
+     `premultipliedAlpha`. It accepts elements of any drawable canvas, and
+     needs that canvas to have a rendering context; the polyfill doesn't.
+     Usage and bounds errors are WebGPU validation errors.
+
+   This phase also fixed `paint` firing after `requestPaint()` before a
+   newly added child's first snapshot was ready. Underglass's admission
+   probe found it.
 4. **Fidelity**: fonts, pseudo-elements, form state, interaction-state
    mirroring, scroll offsets, optional fake caret.
 5. **Testing**: Playwright on chromium/firefox/webkit. Pixel-tolerance

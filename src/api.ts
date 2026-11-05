@@ -1,4 +1,6 @@
 import { drawElementImage, recordFor } from './contexts/2d';
+import { texElementSubImage2D } from './contexts/webgl';
+import { drawElementImageToTexture } from './contexts/webgpu';
 import { invalidState, isElement } from './dom';
 import { createElementImage, ElementImage, elementImageRecord } from './element-image';
 import { linkPlaceholder, placeholderOf, queueOffscreenGeometry } from './geometry/offscreen';
@@ -166,6 +168,10 @@ export function patch(): void {
   if (typeof OffscreenCanvasRenderingContext2D !== 'undefined') {
     method(OffscreenCanvasRenderingContext2D.prototype, 'drawElementImage', drawElementImage);
   }
+  for (const gl of [globalThis.WebGLRenderingContext, globalThis.WebGL2RenderingContext]) {
+    if (gl) method(gl.prototype, 'texElementSubImage2D', texElementSubImage2D);
+  }
+  if (typeof GPUQueue !== 'undefined') method(GPUQueue.prototype, 'drawElementImageToTexture', drawElementImageToTexture);
   if (typeof OffscreenCanvas !== 'undefined') {
     method(OffscreenCanvas.prototype, 'getElementImageDefaultSize', function (source: unknown) {
       if (!(source instanceof ElementImage)) throw new TypeError("The provided value is not of type 'ElementImage'.");

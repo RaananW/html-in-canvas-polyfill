@@ -23,6 +23,41 @@ export interface UpdateElementGeometryOptions {
 
 type DrawSource = Element | ElementImage;
 
+/** Source rectangle in CSS pixels; destination size in texels (defaults to the source in grid pixels). */
+export interface WebGLCopyElementImageConfig {
+  sx?: number;
+  sy?: number;
+  swidth?: number;
+  sheight?: number;
+  width?: number;
+  height?: number;
+}
+
+interface TexElementSubImage2D {
+  texElementSubImage2D(
+    target: GLenum,
+    level: GLint,
+    xoffset: GLint,
+    yoffset: GLint,
+    source: DrawSource,
+    config?: WebGLCopyElementImageConfig,
+  ): void;
+}
+
+/** Source rectangle in CSS pixels. */
+export interface GPUDrawElementImageSource {
+  source: DrawSource;
+  sourceX?: number;
+  sourceY?: number;
+  sourceWidth?: number;
+  sourceHeight?: number;
+}
+
+/** Destination size in texels; defaults to the source in grid pixels. */
+export interface GPUDrawElementImageDestination extends GPUCopyExternalImageDestInfo {
+  size?: GPUExtent3D;
+}
+
 interface DrawElementImage {
   drawElementImage(source: DrawSource, dx: number, dy: number, options?: DrawElementImageOptions): void;
   drawElementImage(
@@ -86,4 +121,11 @@ declare global {
   interface CanvasRenderingContext2D extends DrawElementImage {}
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   interface OffscreenCanvasRenderingContext2D extends DrawElementImage {}
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  interface WebGLRenderingContext extends TexElementSubImage2D {}
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  interface WebGL2RenderingContext extends TexElementSubImage2D {}
+  interface GPUQueue {
+    drawElementImageToTexture(source: GPUDrawElementImageSource, destination: GPUDrawElementImageDestination): void;
+  }
 }

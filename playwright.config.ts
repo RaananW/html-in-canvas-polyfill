@@ -14,18 +14,21 @@ export default defineConfig({
     env: { PORT: String(PORT) },
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'], deviceScaleFactor: 2 } },
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'], deviceScaleFactor: 2, launchOptions: { args: ['--enable-unsafe-webgpu'] } },
+    },
     { name: 'webkit', use: { ...devices['Desktop Safari'], deviceScaleFactor: 2 } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
     {
       // Native implementation, used as the conformance oracle.
       name: 'native',
-      testMatch: /(conformance|visual)\.spec\.ts/,
+      testMatch: /(conformance|gpu|visual)\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         channel: 'chromium',
         deviceScaleFactor: 2,
-        launchOptions: { args: ['--enable-blink-features=CanvasDrawElement'] },
+        launchOptions: { args: ['--enable-blink-features=CanvasDrawElement', '--enable-unsafe-webgpu'] },
       },
     },
   ],

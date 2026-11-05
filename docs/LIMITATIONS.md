@@ -19,7 +19,9 @@ then does nothing.
 | `OffscreenCanvasRenderingContext2D.drawElementImage` | `ElementImage` sources only. Automatic geometry works for canvases transferred with `transferControlToOffscreen()` on the main thread. |
 | `updateElementGeometry`, `clearElementGeometry`, `getElementTransform` | Full on `HTMLCanvasElement`, following the explainer (see [Element geometry](#element-geometry)). |
 | `OffscreenCanvas.updateElementGeometry` / `clearElementGeometry`, `elementgeometryupdate`, `ElementGeometryUpdateEvent` | Main thread only. Updates are batched in a microtask, then announced on the placeholder canvas. Calls from a worker do nothing. |
-| `texElementSubImage2D`, `drawElementImageToTexture` | Not implemented (phase 3). |
+| `WebGLRenderingContext` / `WebGL2RenderingContext` `.texElementSubImage2D` | Main thread. RGBA/UNSIGNED_BYTE uploads only (see [WebGL and WebGPU](#webgl-and-webgpu)). |
+| `GPUQueue.drawElementImageToTexture` | Main thread. Full otherwise, including source rectangles, `size`, `premultipliedAlpha`, and color formats that `copyExternalImageToTexture` accepts. |
+| Legacy `texElementImage2D`, `GPUQueue.copyElementImageToTexture` | Not provided. Native Chromium 156 has them with shapes that differ from the explainer. |
 
 ## How content is laid out
 
@@ -78,6 +80,30 @@ Limitations:
 - Element positions come from `offsetLeft`/`offsetTop`, which are whole
   pixels, so a hit region can be up to half a CSS pixel off.
 - CSS transforms on the canvas itself aren't supported.
+
+## WebGL and WebGPU
+
+Both upload the element's snapshot, which is the same image `drawElementImage`
+draws. By default they upload the border box at the canvas grid size, as
+`getElementImageDefaultSize()` reports it. Source rectangles are in CSS
+pixels, and partly given rectangles throw `OperationError`, as in native
+Chromium.
+
+- `texElementSubImage2D` uploads with
+  `texSubImage2D(target, level, x, y, RGBA, UNSIGNED_BYTE, canvas)`, so the
+  texture must have an RGBA8 or SRGB8_ALPHA8 format. Native Chromium also
+  accepts RGBA16F and RGBA32F textures. `UNPACK_FLIP_Y_WEBGL` and
+  `UNPACK_PREMULTIPLY_ALPHA_WEBGL` apply. Out-of-range uploads set `INVALID_VALUE`, as in native Chromium.
+- `drawElementImageToTexture` uses `copyExternalImageToTexture`, so the
+  texture needs `COPY_DST` and `RENDER_ATTACHMENT` usage. Missing usage or an
+  out-of-range copy is a WebGPU validation error, not an exception. Like
+  native Chromium, it accepts elements of any drawable canvas.
+- Scaled or cropped uploads are resampled on a 2D canvas first, so they're
+  filtered the same way `drawImage` filters them.
+- `ElementImage` can't be transferred to workers, so uploads from a worker
+  aren't possible.
+- When snapshots taint canvases (see `getStatus().limitations`), uploads throw
+  `SecurityError`.
 
 ## Snapshots
 

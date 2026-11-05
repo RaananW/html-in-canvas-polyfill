@@ -330,7 +330,9 @@ export class CanvasState {
     }
     this.dirty.clear();
 
-    if (this.ready.size > 0 || this.paintRequested) this.dispatchPaint();
+    // Like native, every drawable has a paint record by the time paint fires.
+    const firstCapture = [...this.inFlight].some((el) => !this.snapshots.has(el) && !this.ready.has(el));
+    if ((this.ready.size > 0 || this.paintRequested) && !firstCapture) this.dispatchPaint();
     return this.inFlight.size > 0 || this.dirty.size > 0 || this.animating.size > 0;
   }
 

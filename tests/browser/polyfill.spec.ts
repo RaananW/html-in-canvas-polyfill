@@ -42,7 +42,10 @@ test('uninstall restores canvas children and prototypes', async ({ page }) => {
     return {
       children: Array.from(c.children).map((e) => e.id),
       hosts: document.querySelectorAll('[data-hic-host]').length,
-      patched: 'drawElementImage' in CanvasRenderingContext2D.prototype,
+      patched:
+        'drawElementImage' in CanvasRenderingContext2D.prototype ||
+        'texElementSubImage2D' in WebGL2RenderingContext.prototype ||
+        (typeof GPUQueue !== 'undefined' && 'drawElementImageToTexture' in GPUQueue.prototype),
     };
   }, BASIC);
   expect(result.children).toEqual(['a', 'b']);
