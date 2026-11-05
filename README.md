@@ -6,7 +6,7 @@ work as well as possible in browsers without native support, and it documents
 its limitations clearly.
 
 > **Status:** phases 1 (core 2D), 2 (element geometry), 3 (WebGL and
-> WebGPU), and 4 (fidelity) are done. `content="drawable"`, `paint`, `requestPaint()`,
+> WebGPU), 4 (fidelity), and 5 (testing) are done. `content="drawable"`, `paint`, `requestPaint()`,
 > `drawElementImage`, `captureElementImage`, and `getElementImageDefaultSize`
 > work in Chromium, WebKit, and Firefox, and are checked against native
 > Chromium. `updateElementGeometry`, `clearElementGeometry`, and
@@ -14,7 +14,9 @@ its limitations clearly.
 > they're drawn. `texElementSubImage2D` and `drawElementImageToTexture` upload
 > elements to WebGL and WebGPU textures. Snapshots include `:hover` and
 > `:active`, open shadow trees, form state, the selection highlight, and a
-> blinking caret. Cross-browser testing and perf budgets come next. See
+> blinking caret. The WICG demos and Strata components are compared with
+> native Chromium, [Underglass](https://github.com/RaananW/underglass) runs
+> in WebGPU mode, and perf budgets guard paint latency. See
 > [docs/PLAN.md](docs/PLAN.md) and [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
 
 ## Usage

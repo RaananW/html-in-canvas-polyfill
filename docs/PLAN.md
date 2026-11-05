@@ -161,10 +161,32 @@ sized to the canvas content box. There are two modes:
      the caret's columns exactly in Chromium and WebKit.
    - WebKit draws themed form controls without their theme in SVG images, so
      visual tests use `appearance: none` fields.
-5. **Testing**: Playwright on chromium/firefox/webkit. Pixel-tolerance
-   comparison against native Chrome-with-flag baselines. Run the WICG demos and
-   [Underglass](https://github.com/RaananW/underglass) (including its Strata
-   design system) as smoke tests. Add perf budgets.
+5. **Testing (done)**: Playwright on chromium/firefox/webkit, with native
+   Chromium as the oracle. Pixel-tolerance comparisons cover the WICG
+   complex-text, nested-sparkles, pie-chart and WebGL demos, Strata
+   components, and form state. Running them found:
+   - Native lays out each canvas child on its own at the content-box origin,
+     shrink-to-fit, with percentages against the content box. The host now
+     does the same, mirrors the canvas class so descendant selectors match,
+     and inherits a unitless `line-height` instead of freezing it in pixels.
+   - `canvas.children`, `querySelector()`, a child's `parentElement` and
+     `closest()` see the canvas, as natively; node-level reads see the real
+     tree. Children move with `moveBefore()` where available.
+   - `paint` fires after the page's animation frame callbacks.
+   - `getComputedStyle()` reports authored styles for elements with
+     geometry; natively, geometry doesn't change computed styles.
+
+   [Underglass](https://github.com/RaananW/underglass) mounts a Strata panel
+   in WebGPU mode under the polyfill in Chromium and accepts clicks. It needs
+   `moveBefore()`, so WebKit skips it. Its admission checks found the last
+   three items above. Playwright's default Chromium headless shell hands out
+   invalid WebGPU canvas textures, even without the polyfill, so the
+   polyfill Chromium project runs full Chromium.
+
+   Perf budgets cover a Strata panel of about 40 elements. Medians: first
+   paint 34–50 ms (native 16 ms), update to `paint` 34–50 ms (native under
+   1 ms, in the same frame), and a cached draw about 0.01 ms. Updates take
+   two or three frames because the snapshot decodes asynchronously.
 
 ## Project shape (decided: standalone, open source, engine-agnostic)
 

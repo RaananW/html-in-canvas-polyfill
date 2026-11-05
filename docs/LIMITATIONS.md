@@ -134,8 +134,9 @@ Each `drawable` element is serialized into an SVG `foreignObject` with inlined
 computed styles, fonts, images, and form state, then decoded into an
 `ImageBitmap`. In practice:
 
-- Snapshots are asynchronous. A drawn image lags DOM changes by at least one
-  frame, and drawing before the first `paint` throws, as in native.
+- Snapshots are asynchronous. A drawn image lags DOM changes by two or three
+  frames (about 35–50 ms for a 40-element panel), where native paints in
+  the same frame. Drawing before the first `paint` throws, as in native.
 - Serialization costs about 5–50 ms for complex trees: fine for forms, menus,
   and labels, not for animating large subtrees every frame.
 - Changes are detected with MutationObserver, ResizeObserver, input, change,
