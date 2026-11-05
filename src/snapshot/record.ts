@@ -14,7 +14,13 @@ export class SnapshotRecord {
   readonly defaultHeight: number;
   private refs = 1;
 
-  constructor(result: SnapshotResult, scaleX: number, scaleY: number) {
+  constructor(
+    result: SnapshotResult,
+    scaleX: number,
+    scaleY: number,
+    /** The element the snapshot was taken of. */
+    readonly element: Element,
+  ) {
     this.bitmap = result.bitmap;
     this.width = result.width;
     this.height = result.height;

@@ -1,5 +1,5 @@
 import type { ElementImage } from './element-image';
-import type { CanvasPaintEvent } from './paint/event';
+import type { CanvasPaintEvent, ElementGeometryUpdateEvent } from './paint/event';
 
 export type CanvasContent = 'fallback' | 'drawable';
 
@@ -10,6 +10,15 @@ export interface DrawElementImageOptions {
 export interface ElementImageSize {
   width: number;
   height: number;
+}
+
+export interface UpdateElementGeometryOptions {
+  /** Maps the element's border box, in CSS pixels, to the canvas border box in CSS pixels. */
+  canvasTransform?: DOMMatrixInit;
+  /** Restricts hit testing to this rectangle, in the element's local CSS pixels. */
+  canvasClip?: DOMRectInit;
+  /** Keep the element's current hit-test order instead of moving it to the top. */
+  preserveHitTestOrder?: boolean;
 }
 
 type DrawSource = Element | ElementImage;
@@ -57,14 +66,20 @@ declare global {
     requestPaint(): void;
     captureElementImage(element: Element): ElementImage;
     getElementImageDefaultSize(source: DrawSource): ElementImageSize;
+    updateElementGeometry(source: DrawSource, options?: UpdateElementGeometryOptions): void;
+    clearElementGeometry(source: DrawSource): void;
+    getElementTransform(element: Element): DOMMatrix;
   }
 
   interface HTMLCanvasElementEventMap {
     paint: CanvasPaintEvent;
+    elementgeometryupdate: ElementGeometryUpdateEvent;
   }
 
   interface OffscreenCanvas {
     getElementImageDefaultSize(source: ElementImage): ElementImageSize;
+    updateElementGeometry(source: DrawSource, options?: UpdateElementGeometryOptions): void;
+    clearElementGeometry(source: DrawSource): void;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

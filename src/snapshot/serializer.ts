@@ -15,6 +15,8 @@ export interface SnapshotOptions {
    * same size (nested `drawable` elements have their own snapshots).
    */
   isBoundary?: (el: Element) => boolean;
+  /** Declarations appended to the root, restoring authored values the polyfill overrides. */
+  rootStyle?: Array<[string, string]>;
   /** Keep the SVG markup on the result (debugging only). */
   keepSvg?: boolean;
 }
@@ -143,6 +145,7 @@ async function inlineCssUrls(value: string, base: string, warnings: string[]): P
 
 interface CloneContext {
   isBoundary: ((el: Element) => boolean) | undefined;
+  rootStyle: Array<[string, string]> | undefined;
   pending: Promise<void>[];
   customProps: ReadonlySet<string>;
   pseudoRules: string[];
@@ -351,6 +354,7 @@ function cloneNode(
       ['translate', 'none'],
       ['rotate', 'none'],
       ['scale', 'none'],
+      ...(ctx.rootStyle ?? []),
     );
   }
   applyDeclarations(decls, ctx, (css) => clone.setAttribute('style', css));
@@ -478,6 +482,7 @@ export async function snapshot(el: Element, opts: SnapshotOptions): Promise<Snap
   const scan = scanSheets(el, warnings);
   const ctx: CloneContext = {
     isBoundary: opts.isBoundary,
+    rootStyle: opts.rootStyle,
     pending: [],
     customProps: scan.customProps,
     pseudoRules: [],

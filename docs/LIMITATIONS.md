@@ -13,11 +13,12 @@ then does nothing.
 | `canvas.content` (`fallback` / `drawable`), `drawable` attribute | Full. The legacy `layoutsubtree` attribute is also accepted. |
 | `paint` event, `onpaint`, `CanvasPaintEvent.changedElements` | Full, fired in reverse tree order (native Chromium 156 uses tree order). |
 | `requestPaint()` | Full. |
-| `CanvasRenderingContext2D.drawElementImage` (all overloads) | Full. Returns `undefined`, as in the spec (native Chromium returns a `DOMMatrix`). `preserveElementGeometry` is accepted and ignored until geometry lands. |
+| `CanvasRenderingContext2D.drawElementImage` (all overloads) | Full. Returns `undefined`, as in the spec (native Chromium returns a `DOMMatrix`). Updates the element's geometry from the context transform and destination rectangle unless `preserveElementGeometry` is set. |
 | `captureElementImage()`, `ElementImage` | Full on the main thread. `ElementImage` can't be transferred to workers. |
 | `getElementImageDefaultSize()` | Full (not yet shipped in native Chromium 156). |
-| `OffscreenCanvasRenderingContext2D.drawElementImage` | `ElementImage` sources only. |
-| `updateElementGeometry`, `clearElementGeometry`, `getElementTransform`, `elementgeometryupdate` | Not implemented (phase 2). |
+| `OffscreenCanvasRenderingContext2D.drawElementImage` | `ElementImage` sources only. Automatic geometry works for canvases transferred with `transferControlToOffscreen()` on the main thread. |
+| `updateElementGeometry`, `clearElementGeometry`, `getElementTransform` | Full on `HTMLCanvasElement`, following the explainer (see [Element geometry](#element-geometry)). |
+| `OffscreenCanvas.updateElementGeometry` / `clearElementGeometry`, `elementgeometryupdate`, `ElementGeometryUpdateEvent` | Main thread only. Updates are batched in a microtask, then announced on the placeholder canvas. Calls from a worker do nothing. |
 | `texElementSubImage2D`, `drawElementImageToTexture` | Not implemented (phase 3). |
 
 ## How content is laid out
@@ -25,7 +26,8 @@ then does nothing.
 Native browsers lay out canvas children in place. The polyfill can't, so it
 moves the children into a sibling *host* element (`div[data-hic-host]`). The
 host gets the same content box and inherited styles as the canvas, sits
-exactly on top of it, and is invisible (`opacity: 0`) and not hit-testable.
+exactly on top of it, and is invisible (`opacity: 0`). Only elements with
+geometry are hit-testable.
 
 Consequences:
 
@@ -36,10 +38,46 @@ Consequences:
   `<div data-hic-host>` immediately after the canvas. The polyfill then lays
   out that element and leaves the DOM alone. When there's more than one
   candidate, `data-hic-host="<canvas id>"` selects the canvas.
-- Children are focusable and in the tab order, but they don't receive pointer
-  events. Native browsers behave the same way until element geometry is set,
-  which the polyfill doesn't support yet.
+- Children are focusable and in the tab order. They receive pointer events
+  once they have element geometry, as in native browsers.
+- Events from children bubble through the host, not through the canvas.
 - `uninstall()` moves the children back into the canvas.
+
+## Element geometry
+
+The polyfill follows the explainer. `canvasTransform` maps the element's
+border box, in CSS pixels before CSS transforms, to the canvas border box in
+CSS pixels. `canvasClip` is a rectangle in the element's own CSS pixels. A 2D
+draw sets the transform to `ctx.getTransform()` × the destination rectangle,
+converted from grid pixels; the clip is kept.
+
+The geometry is applied to the live element in the invisible host as a CSS
+`transform` and `clip-path` (in a polyfill stylesheet, not inline styles), so
+the browser's own hit testing, focus, and caret placement follow it. A later
+update puts the element on top (`z-index`) unless `preserveHitTestOrder` is
+set. Updates are applied in a microtask, and synchronously before
+`elementFromPoint`, `elementsFromPoint`, `getBoundingClientRect`, and
+`getClientRects`. `getBoundingClientRect` reflects the geometry, as the
+explainer says it should.
+
+Native Chromium 156 doesn't follow the explainer yet. It expects
+`getElementTransform(element, drawTransform)`, doesn't move hit regions for
+`canvasTransform`, and ignores `canvasClip`. The polyfill's geometry tests
+therefore don't run against native Chromium.
+
+Limitations:
+
+- Hits are bounded by the canvas content box. Clips and perspective on the
+  element's ancestors inside the canvas aren't undone, and a drawable's clip
+  also clips the drawables nested inside it.
+- Hit-test order between nested drawables only applies among siblings,
+  because each drawable is its own stacking context.
+- An authored `clip-path` on an element with geometry is replaced for hit
+  testing. Snapshots still use the authored value.
+- An authored `transition` on `transform` animates the hit region.
+- Element positions come from `offsetLeft`/`offsetTop`, which are whole
+  pixels, so a hit region can be up to half a CSS pixel off.
+- CSS transforms on the canvas itself aren't supported.
 
 ## Snapshots
 

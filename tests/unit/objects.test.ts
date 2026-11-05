@@ -11,6 +11,7 @@ function fakeRecord() {
     { bitmap, width: 100, height: 40, cssWidth: 50, cssHeight: 20, warnings: [] },
     2,
     2,
+    document.createElement('div'),
   );
   return { record, close };
 }

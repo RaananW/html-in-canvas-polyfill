@@ -1,9 +1,10 @@
 import { HOST_ATTR, isElement } from './dom';
+import { GEOMETRY_ATTR } from './geometry/state';
 import { BLOCKIFY_ATTR, CanvasState, nearestState, stateForHost } from './host/canvas-state';
 
 const states = new Map<HTMLCanvasElement, CanvasState>();
 let observedRoots = new WeakSet<Node>();
-let styledRoots = new WeakSet<Node>();
+let styledRoots = new WeakMap<Node, HTMLStyleElement>();
 const injectedStyles: HTMLStyleElement[] = [];
 let observer: MutationObserver | null = null;
 let rafId = 0;
@@ -12,6 +13,8 @@ let warned = new Set<string>();
 
 const STYLE = `
 :where([${HOST_ATTR}]) :where([drawable]){isolation:isolate;will-change:transform}
+:where([${HOST_ATTR}]) [drawable]:not([${GEOMETRY_ATTR}]){pointer-events:none!important}
+:where([${GEOMETRY_ATTR}]){pointer-events:auto}
 ${['block', 'flex', 'grid', 'table'].map((d) => `[${HOST_ATTR}]>[${BLOCKIFY_ATTR}="${d}"]{display:${d}!important}`).join('\n')}
 `;
 
@@ -22,6 +25,9 @@ const callbacks = {
     if (warned.has(message)) return;
     warned.add(message);
     console.warn('[html-in-canvas-polyfill] snapshot failed:', error);
+  },
+  sheetFor(root: Node): CSSStyleSheet | null {
+    return injectStyle(root).sheet;
   },
 };
 
@@ -74,15 +80,17 @@ function dropState(canvas: HTMLCanvasElement): void {
   states.delete(canvas);
 }
 
-function injectStyle(root: Node): void {
-  if (styledRoots.has(root)) return;
-  styledRoots.add(root);
+function injectStyle(root: Node): HTMLStyleElement {
+  const existing = styledRoots.get(root);
+  if (existing?.isConnected) return existing;
   const style = document.createElement('style');
+  styledRoots.set(root, style);
   style.setAttribute('data-hic-style', '');
   style.textContent = STYLE;
   injectedStyles.push(style);
   if (root instanceof ShadowRoot) root.prepend(style);
   else (document.head ?? document.documentElement).appendChild(style);
+  return style;
 }
 
 function scan(root: ParentNode): void {
@@ -113,7 +121,7 @@ function onMutations(records: MutationRecord[]): void {
         if (name !== 'style' && name !== 'lang' && name !== 'dir') host.markAll();
         continue;
       }
-      if (name === BLOCKIFY_ATTR) continue;
+      if (name === BLOCKIFY_ATTR || name === GEOMETRY_ATTR) continue;
       const state = nearestState(target);
       if (state) {
         state.markSubtree(target as Element);
@@ -165,7 +173,7 @@ export function start(): void {
   running = true;
   warned = new Set();
   observedRoots = new WeakSet();
-  styledRoots = new WeakSet();
+  styledRoots = new WeakMap();
   observer = new MutationObserver(onMutations);
   observeRoot(document);
   // Shadow roots created before install; later ones come from attachShadow.

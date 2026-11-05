@@ -14,3 +14,21 @@ export class CanvasPaintEvent extends Event {
     return changed.get(this)!;
   }
 }
+
+export interface ElementGeometryUpdateEventInit extends EventInit {
+  elements?: Element[];
+}
+
+const updated = new WeakMap<Event, readonly Element[]>();
+
+/** Fired on a canvas after geometry updates from its OffscreenCanvas are applied. */
+export class ElementGeometryUpdateEvent extends Event {
+  constructor(type: string, init: ElementGeometryUpdateEventInit = {}) {
+    super(type, init);
+    updated.set(this, Object.freeze([...(init.elements ?? [])]));
+  }
+
+  get elements(): readonly Element[] {
+    return updated.get(this)!;
+  }
+}

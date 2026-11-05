@@ -104,8 +104,27 @@ sized to the canvas content box. There are two modes:
    - Native `drawElementImage` returns a `DOMMatrix`; the spec and the
      polyfill return `undefined`. Native has no `getElementImageDefaultSize`
      yet.
-2. **Geometry & interaction**: update/clear/getElementTransform, auto-geometry
-   from 2D draws, overlay hit-testing, focus/a11y checks.
+2. **Geometry & interaction (done)**: update/clear/getElementTransform,
+   auto-geometry from 2D draws, overlay hit-testing with CSS transforms and
+   `clip-path` on the live elements, `preserveHitTestOrder`, and
+   OffscreenCanvas batching with `elementgeometryupdate`. Drawn inputs take
+   clicks and typing. Underglass's admission probes (`verifyProbeGeometry`,
+   `verifyFrameBounds`, `verifyProjectiveHits`) pass against the polyfill in
+   Chromium and WebKit.
+
+   Native Chromium 156 geometry doesn't match the explainer, so it can't be
+   the oracle for this phase. The polyfill follows the explainer and the
+   convention Underglass verified:
+   - `getElementTransform` takes `(element, drawTransform)` and returns
+     the draw transform conjugated by the content offset and grid scale.
+   - `canvasTransform` doesn't move hit regions, `canvasClip` is ignored,
+     and draws don't create hit regions.
+   - `OffscreenCanvas` has `updateElementGeometry`/`clearElementGeometry`,
+     and `ElementGeometryUpdateEvent` exists, but no event fires for
+     main-thread updates.
+   - The wrong-canvas error is `InvalidStateError`: "The element can only be
+     drawn into its nearest ancestor <canvas>." The polyfill uses the same
+     message.
 3. **WebGL / WebGPU** upload paths.
 4. **Fidelity**: fonts, pseudo-elements, form state, interaction-state
    mirroring, scroll offsets, optional fake caret.

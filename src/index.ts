@@ -5,8 +5,13 @@ import { snapshotsTaint } from './snapshot/bitmap';
 import './types';
 
 export { ElementImage } from './element-image';
-export type { CanvasContent, DrawElementImageOptions, ElementImageSize } from './types';
-export { CanvasPaintEvent, type CanvasPaintEventInit } from './paint/event';
+export type { CanvasContent, DrawElementImageOptions, ElementImageSize, UpdateElementGeometryOptions } from './types';
+export {
+  CanvasPaintEvent,
+  type CanvasPaintEventInit,
+  ElementGeometryUpdateEvent,
+  type ElementGeometryUpdateEventInit,
+} from './paint/event';
 
 export const VERSION = '0.0.0';
 
@@ -32,7 +37,9 @@ const BASE_LIMITATIONS = [
   'Cross-origin images and fonts without CORS are omitted from snapshots.',
   ':hover and :active styles are not reflected in snapshots.',
   'Form controls are drawn without platform theming in WebKit and Firefox.',
-  'Element geometry, hit testing, WebGL, and WebGPU are not implemented yet.',
+  'Hit testing uses CSS transforms and clip-path on the live elements; ancestor clips and perspective are not undone.',
+  'Events from drawn elements bubble through the sibling host, not through the canvas.',
+  'WebGL and WebGPU are not implemented yet.',
 ];
 
 let installed = false;

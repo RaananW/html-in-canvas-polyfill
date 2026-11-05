@@ -1,4 +1,5 @@
 import { composedParent, HOST_ATTR, isElement, reverseTreeOrder } from '../dom';
+import { Geometry } from '../geometry/state';
 import { CanvasPaintEvent } from '../paint/event';
 import { SnapshotRecord } from '../snapshot/record';
 import { snapshot } from '../snapshot/serializer';
@@ -31,6 +32,8 @@ export const BLOCKIFY_ATTR = 'data-hic-blockify';
 export interface StateCallbacks {
   schedule(): void;
   onError(error: unknown): void;
+  /** The polyfill stylesheet of a document or shadow root, injecting it if needed. */
+  sheetFor(root: Node): CSSStyleSheet | null;
 }
 
 export class CanvasState {
@@ -51,10 +54,14 @@ export class CanvasState {
   private structureChanged = true;
   private readonly resizeObserver: ResizeObserver;
   private readonly listeners: Array<[string, EventListener]> = [];
+  readonly geometry: Geometry;
   scaleX = 1;
   scaleY = 1;
-  private contentWidth = 0;
-  private contentHeight = 0;
+  contentWidth = 0;
+  contentHeight = 0;
+  /** The content-box origin relative to the canvas border box, in CSS pixels. */
+  contentLeft = 0;
+  contentTop = 0;
   private hostLeft = 0;
   private hostTop = 0;
 
@@ -72,6 +79,12 @@ export class CanvasState {
       this.adoptChildren();
     }
     hostStates.set(this.host, this);
+    this.geometry = new Geometry({
+      host: this.host,
+      owns: (el) => this.isDrawable(el) && nearestState(el) === this,
+      contentOrigin: () => ({ x: this.contentLeft, y: this.contentTop }),
+      sheetFor: (root) => this.callbacks.sheetFor(root),
+    });
 
     // Observation always reports an initial size; only real changes matter.
     const sizes = new WeakMap<Element, string>();
@@ -184,7 +197,6 @@ export class CanvasState {
     this.callbacks.schedule();
   }
 
-  /** Sizes and positions the host over the canvas content box. */
   /** The canvas content box in CSS pixels and the CSS-to-grid scale. */
   measure(cs = getComputedStyle(this.canvas)) {
     const canvas = this.canvas;
@@ -198,6 +210,7 @@ export class CanvasState {
     return { padL, padT, width, height, scaleX, scaleY };
   }
 
+  /** Sizes and positions the host over the canvas content box. */
   layoutHost(): void {
     const canvas = this.canvas;
     const cs = getComputedStyle(canvas);
@@ -209,6 +222,8 @@ export class CanvasState {
     this.scaleY = scaleY;
     this.contentWidth = width;
     this.contentHeight = height;
+    this.contentLeft = canvas.clientLeft + padL;
+    this.contentTop = canvas.clientTop + padT;
 
     const style = this.host.style;
     // Only write changed values: every style write queues a mutation record.
@@ -231,6 +246,8 @@ export class CanvasState {
     set('overflow', 'clip');
     set('display', 'block');
     set('transform', 'none');
+    // Stay above the canvas so drawn elements with geometry receive hits.
+    set('z-index', cs.position !== 'static' && cs.zIndex !== 'auto' ? cs.zIndex : 'auto');
     for (const name of INHERITED_FROM_CANVAS) {
       const value = cs.getPropertyValue(name);
       if (value) set(name, value, false);
@@ -276,6 +293,7 @@ export class CanvasState {
         this.ready.get(el)?.release();
         this.ready.delete(el);
         this.animating.delete(el);
+        this.geometry.clear(el);
       }
     }
     for (const el of current) {
@@ -293,6 +311,8 @@ export class CanvasState {
       this.syncStructure();
     }
     this.layoutHost();
+    // Layout may have moved the live boxes that carry hit-test geometry.
+    this.geometry.invalidate();
     if (this.allDirty) {
       this.allDirty = false;
       for (const el of this.observed) this.dirty.add(el);
@@ -318,7 +338,12 @@ export class CanvasState {
     this.inFlight.add(el);
     const scaleX = this.scaleX;
     const scaleY = this.scaleY;
-    snapshot(el, { scaleX, scaleY, isBoundary: (e) => hostStates.has(e) || this.isDrawable(e) })
+    snapshot(el, {
+      scaleX,
+      scaleY,
+      isBoundary: (e) => hostStates.has(e) || this.isDrawable(e),
+      rootStyle: this.geometry.authoredStyle(el),
+    })
       .then(
         (result) => {
           if (!this.observed.has(el)) {
@@ -326,7 +351,7 @@ export class CanvasState {
             return;
           }
           this.ready.get(el)?.release();
-          this.ready.set(el, new SnapshotRecord(result, scaleX, scaleY));
+          this.ready.set(el, new SnapshotRecord(result, scaleX, scaleY, el));
         },
         (error: unknown) => this.callbacks.onError(error),
       )
@@ -349,6 +374,7 @@ export class CanvasState {
   }
 
   destroy(): void {
+    this.geometry.destroy();
     this.resizeObserver.disconnect();
     for (const [type, fn] of this.listeners) this.host.removeEventListener(type, fn, true);
     for (const record of this.snapshots.values()) record.release();
