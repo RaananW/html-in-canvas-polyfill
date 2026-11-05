@@ -183,14 +183,22 @@ export function controlOverlay(el: HTMLInputElement | HTMLTextAreaElement, root:
   const px = (name: string) => parseFloat(cs.getPropertyValue(name)) || 0;
   const padL = px('padding-left');
   const padT = px('padding-top');
-  const contentHeight = el.clientHeight - padT - px('padding-bottom');
+  const padR = px('padding-right');
+  const padB = px('padding-bottom');
+  const borderL = px('border-left-width');
+  const borderT = px('border-top-width');
+  // The padding box. Firefox measures a text input's client box at its
+  // content box (clientLeft includes the padding).
+  const boxW = el.clientWidth + (el.clientLeft > borderL ? padL + padR : 0);
+  const boxH = el.clientHeight + (el.clientTop > borderT ? padT + padB : 0);
+  const contentHeight = boxH - padT - padB;
   const textarea = el instanceof HTMLTextAreaElement;
 
   const mirror = document.createElement('div');
   for (const name of MIRROR_PROPS) mirror.style.setProperty(name, cs.getPropertyValue(name));
   mirror.style.cssText +=
     `;position:absolute;left:0;top:0;margin:0;padding:0;border:0;box-sizing:content-box;` +
-    `width:${el.clientWidth - padL - px('padding-right')}px${textarea ? '' : ';white-space:pre'}`;
+    `width:${boxW - padL - padR}px${textarea ? '' : ';white-space:pre'}`;
   // Passwords are masked one bullet per code point; offsets are UTF-16.
   const password = el instanceof HTMLInputElement && el.type === 'password';
   const value = password ? '\u2022'.repeat([...el.value].length) : el.value;
@@ -210,8 +218,8 @@ export function controlOverlay(el: HTMLInputElement | HTMLTextAreaElement, root:
   // Single-line controls center their line vertically and scroll horizontally;
   // textareas are drawn unscrolled.
   const o = offsetIn(el, root);
-  const left = o.x + el.clientLeft;
-  const top = o.y + el.clientTop;
+  const left = o.x + borderL;
+  const top = o.y + borderT;
   // Boxes are direct children of the snapshot wrapper, above the root (which
   // may be positioned with a z-index), clipped to the control's padding box.
   // They can't share a container: a stacking context would isolate the blend.
@@ -220,8 +228,8 @@ export function controlOverlay(el: HTMLInputElement | HTMLTextAreaElement, root:
     const y = padT + (textarea ? r.top - origin.top : (contentHeight - r.height) / 2);
     const x0 = Math.max(0, x);
     const y0 = Math.max(0, y);
-    const w = Math.min(el.clientWidth, x + width) - x0;
-    const h = Math.min(el.clientHeight, y + r.height) - y0;
+    const w = Math.min(boxW, x + width) - x0;
+    const h = Math.min(boxH, y + r.height) - y0;
     if (w <= 0 || h <= 0) return '';
     return `<div style="position:absolute;z-index:2147483647;left:${left + x0}px;top:${top + y0}px;width:${w}px;height:${h}px;${style}"></div>`;
   };

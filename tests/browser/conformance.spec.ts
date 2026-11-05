@@ -255,11 +255,17 @@ async function selectionScenario(page: import('@playwright/test').Page, kind: Se
     getSelection()!.removeAllRanges();
     f.blur();
     await new Promise((r) => setTimeout(r, 300));
-    return { hasFocus: document.hasFocus(), initial: frames[initial - 1], after, cleared: frames.at(-1) };
+    // The browser's Highlight system color over white.
+    const probe = document.createElement('div');
+    probe.style.backgroundColor = 'Highlight';
+    document.body.append(probe);
+    const [r, g, b, alpha = 1] = getComputedStyle(probe).backgroundColor.match(/[\d.]+/g)!.map(Number);
+    probe.remove();
+    const highlight = [r!, g!, b!].map((v) => Math.round(v * alpha + 255 * (1 - alpha)));
+    return { hasFocus: document.hasFocus(), highlight, initial: frames[initial - 1], after, cleared: frames.at(-1) };
   }, kind);
 }
 
-const HIGHLIGHT = [179, 215, 254];
 const WHITE = [255, 255, 255];
 const near = (a: number[] | undefined, b: number[]) => !!a && a.every((v, i) => Math.abs(v - b[i]!) <= 4);
 
@@ -267,7 +273,8 @@ for (const kind of ['div', 'input'] as const) {
   test(`draws the selection highlight in ${kind === 'div' ? 'text' : 'a text input'}`, async ({ page }) => {
     const result = await selectionScenario(page, kind);
     expect(near(result.initial?.highlight, WHITE)).toBe(true);
-    const selected = result.after.find((f) => near(f.highlight, HIGHLIGHT));
+    // rgb(179,215,254) in Chromium and WebKit.
+    const selected = result.after.find((f) => near(f.highlight, result.highlight));
     expect(selected, JSON.stringify(result.after)).toBeTruthy();
     expect(near(selected!.outside, WHITE)).toBe(true);
     expect(selected!.caret).toEqual([]);
