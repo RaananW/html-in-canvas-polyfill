@@ -31,9 +31,24 @@ host gets the same content box and inherited styles as the canvas, sits
 exactly on top of it, and is invisible (`opacity: 0`). Only elements with
 geometry are hit-testable.
 
-Consequences:
+Like native Chromium, each direct child is laid out on its own at the
+content-box origin. Children overlap, their width shrinks to fit, and
+percentages resolve against the canvas content box. The polyfill does this
+by positioning each child absolutely at the host origin. As a result:
 
-- Selectors such as `canvas > .item` no longer match, and
+- The computed `position` of a direct child reads `absolute`, where native
+  reads `static`, and authored `position`, offsets and `float` are ignored.
+- A direct child is the containing block for its absolutely positioned
+  descendants.
+
+Consequences of the move:
+
+- The canvas's `class` attribute is mirrored onto the host, so selectors
+  such as `.chart .label` still match. Selectors that name the canvas
+  element or its id (`canvas > .item`, `#chart .item`) no longer match.
+- `canvas.children`, `firstElementChild`, `lastElementChild`,
+  `childElementCount`, `querySelector()` and `querySelectorAll()` list the
+  moved children. `childNodes` and `firstChild` don't, and
   `child.parentElement` is the host, not the canvas.
 - Frameworks that own the canvas children (React, Vue, …) will fight the
   move. Use *authoring mode* instead: render the children into your own

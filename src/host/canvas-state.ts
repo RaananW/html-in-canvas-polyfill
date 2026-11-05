@@ -18,17 +18,6 @@ const INHERITED_FROM_CANVAS = [
   '-webkit-font-smoothing',
 ];
 
-const BLOCKIFY: Record<string, string> = {
-  inline: 'block',
-  'inline-block': 'block',
-  'inline-flex': 'flex',
-  'inline-grid': 'grid',
-  'inline-table': 'table',
-  'inline flow-root': 'block',
-};
-
-export const BLOCKIFY_ATTR = 'data-hic-blockify';
-
 /** Native caret blink half-period. */
 const CARET_BLINK_MS = 500;
 
@@ -86,6 +75,7 @@ export class CanvasState {
       this.host.setAttribute(HOST_ATTR, '');
       canvas.after(this.host);
       this.adoptChildren();
+      Object.defineProperties(canvas, childShims(this.host));
     }
     hostStates.set(this.host, this);
     this.geometry = new Geometry({
@@ -313,9 +303,22 @@ export class CanvasState {
     set('transform', 'none');
     // Stay above the canvas so drawn elements with geometry receive hits.
     set('z-index', cs.position !== 'static' && cs.zIndex !== 'auto' ? cs.zIndex : 'auto');
+    // `inherit` keeps values such as a unitless line-height, which computed
+    // styles report in pixels, when the canvas inherits the same value.
+    const parent = this.host.parentElement;
+    const ps = parent ? getComputedStyle(parent) : null;
     for (const name of INHERITED_FROM_CANVAS) {
       const value = cs.getPropertyValue(name);
-      if (value) set(name, value, false);
+      if (value) set(name, ps?.getPropertyValue(name) === value ? 'inherit' : value, false);
+    }
+    // Mirrored classes keep descendant selectors such as `.chart .label`
+    // matching the moved children; the important styles above keep the box.
+    if (this.mode === 'auto') {
+      const classes = canvas.getAttribute('class');
+      if (this.host.getAttribute('class') !== classes) {
+        if (classes === null) this.host.removeAttribute('class');
+        else this.host.setAttribute('class', classes);
+      }
     }
     if (canvas.lang && this.host.lang !== canvas.lang) this.host.lang = canvas.lang;
     if (canvas.dir && this.host.dir !== canvas.dir) this.host.dir = canvas.dir;
@@ -336,18 +339,7 @@ export class CanvasState {
     }
   }
 
-  /** Native canvases blockify their immediate children. */
-  private blockifyChildren(): void {
-    for (const child of Array.from(this.host.children)) {
-      const previous = child.getAttribute(BLOCKIFY_ATTR);
-      if (previous) child.removeAttribute(BLOCKIFY_ATTR);
-      const target = BLOCKIFY[getComputedStyle(child).display];
-      if (target) child.setAttribute(BLOCKIFY_ATTR, target);
-    }
-  }
-
   private syncStructure(): void {
-    this.blockifyChildren();
     const current = new Set(this.drawables());
     for (const el of this.observed) {
       if (!current.has(el)) {
@@ -456,9 +448,9 @@ export class CanvasState {
     this.snapshots.clear();
     this.ready.clear();
     this.observed.clear();
-    for (const child of Array.from(this.host.children)) child.removeAttribute(BLOCKIFY_ATTR);
     hostStates.delete(this.host);
     if (this.mode === 'auto') {
+      for (const name of CHILD_SHIMS) delete (this.canvas as unknown as Record<string, unknown>)[name];
       while (this.host.firstChild) this.canvas.appendChild(this.host.firstChild);
       this.host.remove();
     } else if (this.hostStyleBackup === null) {
@@ -467,6 +459,26 @@ export class CanvasState {
       this.host.setAttribute('style', this.hostStyleBackup);
     }
   }
+}
+
+const CHILD_SHIMS = ['children', 'firstElementChild', 'lastElementChild', 'childElementCount', 'querySelector', 'querySelectorAll'] as const;
+
+/**
+ * Auto mode: element-level child reads on the canvas see the relocated
+ * children, so code such as `for (const el of canvas.children)` keeps working.
+ * Node-level reads (`firstChild`, `childNodes`) still see the canvas itself.
+ */
+function childShims(host: HTMLElement): PropertyDescriptorMap {
+  const getter = (get: () => unknown) => ({ get, configurable: true });
+  const method = (value: unknown) => ({ value, configurable: true, writable: true });
+  return {
+    children: getter(() => host.children),
+    firstElementChild: getter(() => host.firstElementChild),
+    lastElementChild: getter(() => host.lastElementChild),
+    childElementCount: getter(() => host.childElementCount),
+    querySelector: method((selectors: string) => host.querySelector(selectors)),
+    querySelectorAll: method((selectors: string) => host.querySelectorAll(selectors)),
+  };
 }
 
 function findAuthoringHost(canvas: HTMLCanvasElement): HTMLElement | null {

@@ -41,7 +41,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps ${{ matrix.project == 'native' && 'chromium' || matrix.project }}
+      # Every project needs Chromium: the WICG demo tests use native Chromium as their reference.
+      - run: pnpm exec playwright install --with-deps chromium ${{ (matrix.project == 'webkit' || matrix.project == 'firefox') && matrix.project || '' }}
       - run: pnpm build
       - run: pnpm exec playwright test --project=${{ matrix.project }}
       - if: failure()

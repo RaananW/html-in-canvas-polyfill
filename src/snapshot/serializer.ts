@@ -333,6 +333,26 @@ function cloneNode(
   const el = src as Element;
   if (el.localName === 'script' || el.localName === 'style' || el.localName === 'noscript') return null;
 
+  if (!isRoot && ctx.isBoundary?.(el) && getComputedStyle(el).display === 'inline') {
+    // Nested drawables have their own snapshots. An inline one can wrap and
+    // ignores width and height, so clone its content invisibly to keep the
+    // parent's line boxes exact.
+    const isBoundary = ctx.isBoundary;
+    ctx.isBoundary = (e) => e !== el && isBoundary(e);
+    let box: Node | null;
+    try {
+      box = cloneNode(src, parentStyle, ctx, false);
+    } finally {
+      ctx.isBoundary = isBoundary;
+    }
+    if (box instanceof Element) {
+      for (const e of [box, ...box.querySelectorAll('*')]) {
+        e.setAttribute('style', `${e.getAttribute('style') ?? ''};visibility:hidden!important`);
+      }
+    }
+    return box;
+  }
+
   const csMap = styleToMap(getComputedStyle(el), ctx.customProps);
   if (!isRoot && ctx.isBoundary?.(el)) {
     // Nested drawables have their own snapshots. Keep the box so siblings lay
@@ -400,6 +420,12 @@ function cloneNode(
       ['translate', 'none'],
       ['rotate', 'none'],
       ['scale', 'none'],
+      // Computed min/max sizes keep percentages, which would resolve against
+      // the snapshot instead of the canvas. The pinned width/height suffice.
+      ['min-width', '0'],
+      ['max-width', 'none'],
+      ['min-height', '0'],
+      ['max-height', 'none'],
       ...(ctx.rootStyle ?? []),
     );
   }

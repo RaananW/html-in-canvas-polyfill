@@ -161,6 +161,92 @@ test('throws InvalidStateError for undrawable sources', async ({ page }) => {
   expect(result.closed).toMatch(/^InvalidStateError: .*The ElementImage has been closed\.$/);
 });
 
+test('lays out each child on its own, shrink-to-fit, against the content box', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const long = 'lorem ipsum dolor sit amet '.repeat(6);
+    document.body.innerHTML = `
+      <style>.chart .label { width: 77px }</style>
+      <div style="line-height:1.5">
+        <canvas id="c" class="chart" content="drawable" style="display:block;width:300px;height:200px;padding:5px;border:2px solid">
+          <div id="margins" drawable style="margin:0 20px">${long}</div>
+          <div id="short" drawable>short</div>
+          <div id="half" drawable style="height:50%">half</div>
+          <div id="max" drawable style="max-width:40%">${long}</div>
+          <div id="full" drawable style="box-sizing:border-box;width:100%;padding:10px">full</div>
+          <span id="inline" drawable>inline</span>
+          <div id="big" drawable style="font-size:30px">big</div>
+          <div id="label" class="label" drawable>label</div>
+        </canvas>
+      </div>`;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    const paint = () => new Promise((r) => c.addEventListener('paint', r, { once: true }));
+    await paint();
+    const el = (id: string) => document.getElementById(id)!;
+    const before = el('label').offsetWidth;
+    c.className = '';
+    c.requestPaint();
+    await paint();
+    return {
+      margins: el('margins').offsetWidth,
+      short: el('short').offsetWidth < 100,
+      half: el('half').offsetHeight,
+      max: el('max').offsetWidth,
+      full: el('full').offsetWidth,
+      inline: getComputedStyle(el('inline')).display,
+      lineHeight: getComputedStyle(el('big')).lineHeight,
+      label: [before, el('label').offsetWidth < 77],
+    };
+  });
+  expect(result).toEqual({
+    margins: 260,
+    short: true,
+    half: 100,
+    max: 120,
+    full: 300,
+    inline: 'block',
+    lineHeight: '45px',
+    label: [77, true],
+  });
+});
+
+test('canvas element accessors list the drawable children', async ({ page }) => {
+  const result = await page.evaluate(async (html) => {
+    document.body.innerHTML = html;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    await new Promise((r) => c.addEventListener('paint', r, { once: true }));
+    return [
+      Array.from(c.children, (e) => e.id),
+      c.childElementCount,
+      c.firstElementChild?.id,
+      c.lastElementChild?.id,
+      c.querySelector('#b')?.id,
+      c.querySelectorAll('div').length,
+    ];
+  }, BASIC);
+  expect(result).toEqual([['a', 'b'], 2, 'a', 'b', 'b', 2]);
+});
+
+test('nested drawables keep their space in the parent snapshot', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    document.body.innerHTML = `
+      <canvas id="c" width="300" height="50" content="drawable" style="width:300px;height:50px">
+        <div id="p" drawable style="font:20px monospace;color:#000">AAA<span id="nested" drawable>BBB</span><span id="tail">CCC</span></div>
+      </canvas>`;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    await new Promise((r) => c.addEventListener('paint', r, { once: true }));
+    const ctx = c.getContext('2d', { willReadFrequently: true })!;
+    ctx.drawElementImage(document.getElementById('p')!, 0, 0);
+    const dark = (el: HTMLElement) => {
+      const { data } = ctx.getImageData(el.offsetLeft + 1, 0, el.offsetWidth - 2, 30);
+      let n = 0;
+      for (let i = 0; i < data.length; i += 4) if (data[i + 3]! > 128) n++;
+      return n;
+    };
+    return { nested: dark(document.getElementById('nested')!), tail: dark(document.getElementById('tail')!) > 20 };
+  });
+  expect(result).toEqual({ nested: 0, tail: true });
+});
+
 test('draws open shadow trees with slotted content, and redraws on shadow changes', async ({ page }) => {
   const result = await page.evaluate(async () => {
     if (!customElements.get('x-shadow-box')) {

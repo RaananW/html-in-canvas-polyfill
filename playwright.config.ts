@@ -23,7 +23,7 @@ export default defineConfig({
     {
       // Native implementation, used as the conformance oracle.
       name: 'native',
-      testMatch: /(conformance|gpu|visual)\.spec\.ts/,
+      testMatch: /(conformance|gpu|visual|wicg)\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         channel: 'chromium',

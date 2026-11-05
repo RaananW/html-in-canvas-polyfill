@@ -1,6 +1,6 @@
 import { HOST_ATTR, isElement } from './dom';
 import { GEOMETRY_ATTR } from './geometry/state';
-import { BLOCKIFY_ATTR, CanvasState, nearestState, stateForHost } from './host/canvas-state';
+import { CanvasState, nearestState, stateForHost } from './host/canvas-state';
 
 const states = new Map<HTMLCanvasElement, CanvasState>();
 let observedRoots = new WeakSet<Node>();
@@ -11,11 +11,14 @@ let rafId = 0;
 let running = false;
 let warned = new Set<string>();
 
+// Native Chromium lays out each canvas child on its own at the content-box
+// origin: blockified, shrink-to-fit, percentages against the content box.
+// An absolutely positioned box at 0,0 in the host does the same.
 const STYLE = `
 :where([${HOST_ATTR}]) :where([drawable]){isolation:isolate;will-change:transform}
 :where([${HOST_ATTR}]) [drawable]:not([${GEOMETRY_ATTR}]){pointer-events:none!important}
 :where([${GEOMETRY_ATTR}]){pointer-events:auto}
-${['block', 'flex', 'grid', 'table'].map((d) => `[${HOST_ATTR}]>[${BLOCKIFY_ATTR}="${d}"]{display:${d}!important}`).join('\n')}
+[${HOST_ATTR}]>*{position:absolute!important;inset:0 auto auto 0!important}
 `;
 
 const callbacks = {
@@ -121,7 +124,7 @@ function onMutations(records: MutationRecord[]): void {
         if (name !== 'style' && name !== 'lang' && name !== 'dir') host.markAll();
         continue;
       }
-      if (name === BLOCKIFY_ATTR || name === GEOMETRY_ATTR) continue;
+      if (name === GEOMETRY_ATTR) continue;
       const state = nearestState(target);
       if (state) {
         state.markSubtree(target as Element);
