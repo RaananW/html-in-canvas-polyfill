@@ -16,8 +16,8 @@ export function recordFor(canvas: AnyCanvas, source: unknown): SnapshotRecord {
     throw invalidState('DrawElementImage requires the canvas to have the content=drawable attribute.');
   }
   const state = nearestState(source);
-  // Children not yet moved into a host (same task as insertion) have no snapshot yet.
-  if (!state && source.parentElement === canvas) throw invalidState('No cached paint record for element.');
+  // Content not yet moved into a host (same task as insertion) have no snapshot yet.
+  if (!state && canvas.contains(source)) throw invalidState('No cached paint record for element.');
   if (!state || state.canvas !== canvas) {
     throw invalidState('The element can only be drawn into its nearest ancestor <canvas>.');
   }

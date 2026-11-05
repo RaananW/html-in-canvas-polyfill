@@ -48,8 +48,14 @@ Consequences of the move:
   element or its id (`canvas > .item`, `#chart .item`) no longer match.
 - `canvas.children`, `firstElementChild`, `lastElementChild`,
   `childElementCount`, `querySelector()` and `querySelectorAll()` list the
-  moved children. `childNodes` and `firstChild` don't, and
-  `child.parentElement` is the host, not the canvas.
+  moved children. A moved child's `parentElement` is the canvas, and
+  `closest()` from inside the host continues from the canvas, so
+  `el.closest('canvas')` finds it. Node-level reads (`childNodes`,
+  `firstChild`, `parentNode`, `contains()`) see the real tree.
+- Children are moved with `moveBefore()` where available, so focus, iframes
+  and animations survive the move. Content moved into the canvas is adopted
+  on the next mutation callback, or immediately when it's passed to
+  `updateElementGeometry()`.
 - Frameworks that own the canvas children (React, Vue, …) will fight the
   move. Use *authoring mode* instead: render the children into your own
   `<div data-hic-host>` immediately after the canvas. The polyfill then lays
@@ -75,7 +81,9 @@ update puts the element on top (`z-index`) unless `preserveHitTestOrder` is
 set. Updates are applied in a microtask, and synchronously before
 `elementFromPoint`, `elementsFromPoint`, `getBoundingClientRect`, and
 `getClientRects`. `getBoundingClientRect` reflects the geometry, as the
-explainer says it should.
+explainer says it should. As natively, `getComputedStyle()` doesn't: it
+reports the authored `transform`, `z-index`, `position`, `clip-path`,
+`pointer-events` and related properties of elements with geometry.
 
 Native Chromium 156 doesn't follow the explainer yet. It expects
 `getElementTransform(element, drawTransform)`, doesn't move hit regions for

@@ -1,11 +1,11 @@
 import { drawElementImage, recordFor } from './contexts/2d';
 import { texElementSubImage2D } from './contexts/webgl';
 import { drawElementImageToTexture } from './contexts/webgpu';
-import { invalidState, isElement } from './dom';
+import { HOST_ATTR, invalidState, isElement } from './dom';
 import { createElementImage, ElementImage, elementImageRecord } from './element-image';
 import { linkPlaceholder, placeholderOf, queueOffscreenGeometry } from './geometry/offscreen';
-import { flushGeometry, type GeometryUpdate } from './geometry/state';
-import { type CanvasState, nearestState } from './host/canvas-state';
+import { flushGeometry, geometryOf, type GeometryUpdate } from './geometry/state';
+import { autoCanvasOf, type CanvasState, nearestState } from './host/canvas-state';
 import { CanvasPaintEvent, ElementGeometryUpdateEvent } from './paint/event';
 import { getState, observeRoot, syncCanvas } from './runtime';
 
@@ -74,8 +74,11 @@ function geometryTarget(canvas: HTMLCanvasElement, source: unknown): { state: Ca
   if (canvas.content !== 'drawable') {
     throw invalidState('Element geometry requires the canvas to have the content=drawable attribute.');
   }
-  // Children inserted in this task have not been moved into the host yet.
-  if (element.parentElement === canvas) getState(canvas)?.adoptChildren();
+  // Content inserted in this task has not been moved into the host yet.
+  if (canvas.contains(element)) {
+    syncCanvas(canvas);
+    getState(canvas)?.adoptChildren();
+  }
   const state = nearestState(element);
   if (!state || state.canvas !== canvas) {
     throw invalidState('The element can only be drawn into its nearest ancestor <canvas>.');
@@ -209,6 +212,37 @@ export function patch(): void {
   flushBefore(Element.prototype, 'getBoundingClientRect');
   flushBefore(Element.prototype, 'getClientRects');
 
+  // Natively, element geometry leaves computed styles alone; the overlay rule must too.
+  const getStyle = globalThis.getComputedStyle;
+  method(globalThis, 'getComputedStyle', function (element: Element, pseudo?: string | null) {
+    const style = getStyle(element, pseudo);
+    const geometry = pseudo || !isElement(element) ? undefined : geometryOf(element);
+    if (!geometry) return style;
+    return new Proxy(style, {
+      get(target, key) {
+        if (key === 'getPropertyValue') {
+          return (name: string) => {
+            const read = () => target.getPropertyValue(name);
+            return GEOMETRY_PROPS.has(name) ? geometry.authored(element, read) : read();
+          };
+        }
+        if (typeof key === 'string' && GEOMETRY_PROPS.has(key)) return geometry.authored(element, () => target[key as 'zIndex']);
+        const value = Reflect.get(target, key, target) as unknown;
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+  });
+
+  // Relocated canvas content still finds the canvas and its ancestors.
+  const closest = Element.prototype.closest;
+  method(Element.prototype, 'closest', function (this: Element, selectors: string) {
+    const found = closest.call(this, selectors);
+    const host = closest.call(this, `[${HOST_ATTR}]`);
+    const canvas = host && host !== this ? autoCanvasOf(host) : null;
+    if (!canvas || (found && found !== host && host!.contains(found))) return found;
+    return canvas.closest(selectors);
+  });
+
   // Canvases inside shadow roots are found through the roots' own observers.
   const attachShadow = Element.prototype.attachShadow;
   method(Element.prototype, 'attachShadow', function (this: Element, init: ShadowRootInit) {
@@ -217,6 +251,13 @@ export function patch(): void {
     return root;
   });
 }
+
+/** Properties the geometry overlay rule overrides, in both spellings. */
+const GEOMETRY_PROPS = new Set(
+  ['position', 'top', 'right', 'bottom', 'left', 'inset', 'transform', 'transform-origin', 'translate', 'rotate', 'scale', 'z-index', 'clip-path', 'pointer-events'].flatMap(
+    (name) => [name, name.replace(/-(\w)/g, (_, c: string) => c.toUpperCase())],
+  ),
+);
 
 export function unpatch(): void {
   for (const restore of restores.splice(0).reverse()) restore();

@@ -8,6 +8,7 @@ let styledRoots = new WeakMap<Node, HTMLStyleElement>();
 const injectedStyles: HTMLStyleElement[] = [];
 let observer: MutationObserver | null = null;
 let rafId = 0;
+let afterAnimation: ResizeObserver | null = null;
 let running = false;
 let warned = new Set<string>();
 
@@ -35,10 +36,23 @@ const callbacks = {
 };
 
 export function schedule(): void {
-  if (running && !rafId) rafId = requestAnimationFrame(frame);
+  if (running && !rafId) rafId = requestAnimationFrame(afterCallbacks);
+}
+
+// Native paint events fire after the frame's animation callbacks, so content
+// they change is in this frame's snapshot and they run before paint. A fresh
+// ResizeObserver observation is delivered at that point of the same frame.
+function afterCallbacks(): void {
+  if (typeof ResizeObserver === 'undefined') return frame();
+  afterAnimation ??= new ResizeObserver(() => {
+    afterAnimation?.disconnect();
+    frame();
+  });
+  afterAnimation.observe(document.documentElement);
 }
 
 function frame(): void {
+  if (!running) return;
   rafId = 0;
   let again = false;
   for (const [canvas, state] of states) {
@@ -199,6 +213,7 @@ export function stop(): void {
   observer = null;
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;
+  afterAnimation?.disconnect();
   document.fonts?.removeEventListener('loadingdone', onFontsLoaded);
   for (const canvas of Array.from(states.keys())) dropState(canvas);
   for (const style of injectedStyles.splice(0)) style.remove();

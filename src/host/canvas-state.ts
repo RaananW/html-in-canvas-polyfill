@@ -1,4 +1,4 @@
-import { composedParent, HOST_ATTR, isElement, reverseTreeOrder } from '../dom';
+import { composedParent, computedStyle, HOST_ATTR, isElement, reverseTreeOrder } from '../dom';
 import { Geometry } from '../geometry/state';
 import { CanvasPaintEvent } from '../paint/event';
 import { SnapshotRecord } from '../snapshot/record';
@@ -136,9 +136,20 @@ export class CanvasState {
   /** Auto mode: canvas children become children of the host, in order. */
   adoptChildren(): void {
     if (this.mode !== 'auto' || !this.canvas.firstChild) return;
-    const fragment = this.canvas.ownerDocument.createDocumentFragment();
-    while (this.canvas.firstChild) fragment.appendChild(this.canvas.firstChild);
-    this.host.appendChild(fragment);
+    const { canvas, host } = this;
+    const move = (host as Partial<Pick<HTMLElement, 'moveBefore'>>).moveBefore;
+    for (let child = canvas.firstChild; child; child = canvas.firstChild) {
+      // `moveBefore` keeps focus, iframes and animations alive across the move.
+      try {
+        if (move) move.call(host, child, null);
+        else host.appendChild(child);
+      } catch {
+        host.appendChild(child);
+      }
+      if (isElement(child) && !Object.hasOwn(child, 'parentElement')) {
+        Object.defineProperty(child, 'parentElement', parentShim(canvas, host));
+      }
+    }
     this.structureChanged = true;
     this.allDirty = true;
   }
@@ -253,7 +264,7 @@ export class CanvasState {
   }
 
   /** The canvas content box in CSS pixels and the CSS-to-grid scale. */
-  measure(cs = getComputedStyle(this.canvas)) {
+  measure(cs = computedStyle(this.canvas)) {
     const canvas = this.canvas;
     const px = (v: string) => parseFloat(v) || 0;
     const padL = px(cs.paddingLeft);
@@ -268,7 +279,7 @@ export class CanvasState {
   /** Sizes and positions the host over the canvas content box. */
   layoutHost(): void {
     const canvas = this.canvas;
-    const cs = getComputedStyle(canvas);
+    const cs = computedStyle(canvas);
     const { padL, padT, width, height, scaleX, scaleY } = this.measure(cs);
     if (scaleX !== this.scaleX || scaleY !== this.scaleY || width !== this.contentWidth || height !== this.contentHeight) {
       this.allDirty = true;
@@ -306,7 +317,7 @@ export class CanvasState {
     // `inherit` keeps values such as a unitless line-height, which computed
     // styles report in pixels, when the canvas inherits the same value.
     const parent = this.host.parentElement;
-    const ps = parent ? getComputedStyle(parent) : null;
+    const ps = parent ? computedStyle(parent) : null;
     for (const name of INHERITED_FROM_CANVAS) {
       const value = cs.getPropertyValue(name);
       if (value) set(name, ps?.getPropertyValue(name) === value ? 'inherit' : value, false);
@@ -451,6 +462,7 @@ export class CanvasState {
     hostStates.delete(this.host);
     if (this.mode === 'auto') {
       for (const name of CHILD_SHIMS) delete (this.canvas as unknown as Record<string, unknown>)[name];
+      for (const child of this.host.children) delete (child as unknown as Record<string, unknown>).parentElement;
       while (this.host.firstChild) this.canvas.appendChild(this.host.firstChild);
       this.host.remove();
     } else if (this.hostStyleBackup === null) {
@@ -481,6 +493,19 @@ function childShims(host: HTMLElement): PropertyDescriptorMap {
   };
 }
 
+const nativeParentElement = Object.getOwnPropertyDescriptor(Node.prototype, 'parentElement')!.get!;
+
+/** Auto mode: a relocated child still reports the canvas as its parent element. */
+function parentShim(canvas: HTMLCanvasElement, host: HTMLElement): PropertyDescriptor {
+  return {
+    get(this: Node) {
+      const parent = nativeParentElement.call(this);
+      return parent === host ? canvas : parent;
+    },
+    configurable: true,
+  };
+}
+
 function findAuthoringHost(canvas: HTMLCanvasElement): HTMLElement | null {
   const usable = (el: Element | null): el is HTMLElement => el instanceof HTMLElement && !hostStates.has(el);
   const next = canvas.nextElementSibling;
@@ -490,6 +515,12 @@ function findAuthoringHost(canvas: HTMLCanvasElement): HTMLElement | null {
     if (usable(named)) return named;
   }
   return null;
+}
+
+/** Auto mode: the canvas whose relocated content `host` holds. */
+export function autoCanvasOf(host: Element): HTMLCanvasElement | null {
+  const state = hostStates.get(host);
+  return state?.mode === 'auto' ? state.canvas : null;
 }
 
 /** The state of the nearest polyfilled canvas that `node` belongs to. */

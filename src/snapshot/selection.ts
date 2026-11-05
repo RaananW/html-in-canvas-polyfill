@@ -6,6 +6,8 @@
 // Carets use `var(--hic-caret)`, so one serialized tree renders both blink
 // phases by changing the variable on the wrapper.
 
+import { computedStyle } from '../dom';
+
 const XHTML_NS = 'http://www.w3.org/1999/xhtml';
 
 /** The custom property carets are painted with. */
@@ -49,7 +51,7 @@ export function readSelection(): SelectionState {
 }
 
 function caretColor(el: Element): string | null {
-  const cs = getComputedStyle(el);
+  const cs = computedStyle(el);
   const color = cs.caretColor === 'auto' ? cs.color : cs.caretColor;
   return /^(transparent|rgba\(.*,\s*0\))$/.test(color) ? null : color;
 }
@@ -66,9 +68,9 @@ function caretSpan(parent: Element, state: SelectionState): Node | null {
 
 /** The highlight style for selected text in `parent`: `::selection` colors, or the UA default. */
 function selectionStyle(parent: Element): string {
-  const sel = getComputedStyle(parent, '::selection');
+  const sel = computedStyle(parent, '::selection');
   const bg = sel.backgroundColor;
-  const fg = sel.color !== getComputedStyle(parent).color ? `;color:${sel.color}` : '';
+  const fg = sel.color !== computedStyle(parent).color ? `;color:${sel.color}` : '';
   return `background-color:${bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent' ? 'Highlight' : bg}${fg}`;
 }
 
@@ -142,6 +144,10 @@ export function resetSelectionCaches(): void {
   mirrorRoot = null;
 }
 
+function parentOf(node: Node): Element | null {
+  return node.parentNode instanceof Element ? node.parentNode : null;
+}
+
 /** Layout offset of `el`'s border box from `root`'s, ignoring transforms, after scrolling. */
 function offsetIn(el: HTMLElement, root: Element): { x: number; y: number } {
   const page = (n: HTMLElement | null) => {
@@ -162,7 +168,8 @@ function offsetIn(el: HTMLElement, root: Element): { x: number; y: number } {
   const b = page(root as HTMLElement);
   let x = a.x - b.x;
   let y = a.y - b.y;
-  for (let n = el.parentElement; n; n = n.parentElement) {
+  // `parentNode`: relocated canvas children report the canvas as `parentElement`.
+  for (let n = parentOf(el); n; n = parentOf(n)) {
     x -= n.scrollLeft;
     y -= n.scrollTop;
     if (n === root) break;
@@ -177,7 +184,7 @@ function offsetIn(el: HTMLElement, root: Element): { x: number; y: number } {
 export function controlOverlay(el: HTMLInputElement | HTMLTextAreaElement, root: Element, state: SelectionState): string {
   const start = el.selectionStart ?? 0;
   const end = el.selectionEnd ?? start;
-  const cs = getComputedStyle(el);
+  const cs = computedStyle(el);
   const color = start === end ? caretColor(el) : null;
   if (start === end && (!color || !document.hasFocus())) return '';
   const px = (name: string) => parseFloat(cs.getPropertyValue(name)) || 0;
@@ -241,7 +248,7 @@ export function controlOverlay(el: HTMLInputElement | HTMLTextAreaElement, root:
       out = box(r, 1, `background:var(${CARET_VAR})`);
     }
   } else {
-    const sel = getComputedStyle(el, '::selection').backgroundColor;
+    const sel = computedStyle(el, '::selection').backgroundColor;
     const bg = sel === 'rgba(0, 0, 0, 0)' || sel === 'transparent' ? 'Highlight' : sel;
     // Multiply keeps dark text dark, like a highlight painted behind it.
     for (const r of rects(start, end)) out += box(r, r.width, `background:${bg};mix-blend-mode:multiply`);

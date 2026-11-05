@@ -4,6 +4,7 @@
 // SVG and convert it to a bitmap. See docs/SPIKE.md for the measurements
 // behind these choices.
 
+import { computedStyle } from '../dom';
 import { toBitmap } from './bitmap';
 import {
   CARET_VAR,
@@ -271,7 +272,7 @@ function clonePseudo(
   for (const pseudo of ['::before', '::after', '::placeholder'] as const) {
     const isPlaceholder = pseudo === '::placeholder';
     if (isPlaceholder && !(src instanceof HTMLInputElement || src instanceof HTMLTextAreaElement)) continue;
-    const cs = getComputedStyle(src, pseudo);
+    const cs = computedStyle(src, pseudo);
     const content = cs.getPropertyValue('content');
     if (!isPlaceholder && (content === 'none' || content === 'normal' || content === '')) continue;
     const map = styleToMap(cs, ctx.customProps);
@@ -333,7 +334,7 @@ function cloneNode(
   const el = src as Element;
   if (el.localName === 'script' || el.localName === 'style' || el.localName === 'noscript') return null;
 
-  if (!isRoot && ctx.isBoundary?.(el) && getComputedStyle(el).display === 'inline') {
+  if (!isRoot && ctx.isBoundary?.(el) && computedStyle(el).display === 'inline') {
     // Nested drawables have their own snapshots. An inline one can wrap and
     // ignores width and height, so clone its content invisibly to keep the
     // parent's line boxes exact.
@@ -353,7 +354,7 @@ function cloneNode(
     return box;
   }
 
-  const csMap = styleToMap(getComputedStyle(el), ctx.customProps);
+  const csMap = styleToMap(computedStyle(el), ctx.customProps);
   if (!isRoot && ctx.isBoundary?.(el)) {
     // Nested drawables have their own snapshots. Keep the box so siblings lay
     // out the same, but paint nothing.
@@ -402,7 +403,7 @@ function cloneNode(
     // A snapshot cannot scroll: clip instead, but keep the space classic
     // scrollbars take so content wraps exactly as in the live element.
     const he = el as HTMLElement;
-    const cs = getComputedStyle(el);
+    const cs = computedStyle(el);
     const gutterX = he.offsetWidth - he.clientWidth - parseFloat(cs.borderLeftWidth) - parseFloat(cs.borderRightWidth);
     const gutterY = he.offsetHeight - he.clientHeight - parseFloat(cs.borderTopWidth) - parseFloat(cs.borderBottomWidth);
     decls.push(['overflow', 'hidden']);

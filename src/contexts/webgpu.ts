@@ -13,8 +13,8 @@ function gpuRecord(source: unknown): SnapshotRecord {
   if (source instanceof ElementImage) return elementImageRecord(source);
   if (!isElement(source)) throw fail("The provided value is not of type '(Element or ElementImage)'.");
   const state = nearestState(source);
-  // Children not yet moved into a host (same task as insertion) have no snapshot yet.
-  if (!state && source.parentElement instanceof HTMLCanvasElement) {
+  // Content not yet moved into a host (same task as insertion) have no snapshot yet.
+  if (!state && source.closest('canvas')) {
     throw invalidState('No cached paint record for element.');
   }
   if (!state) throw fail('Only children of a <canvas content=drawable> can be drawn.');

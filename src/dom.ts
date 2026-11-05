@@ -1,5 +1,8 @@
 export const HOST_ATTR = 'data-hic-host';
 
+/** The unpatched `getComputedStyle`: the polyfill reads its own geometry rules. */
+export const computedStyle: typeof getComputedStyle = globalThis.getComputedStyle?.bind(globalThis);
+
 export function composedParent(node: Node): Node | null {
   return node.parentNode instanceof ShadowRoot ? node.parentNode.host : node.parentNode;
 }

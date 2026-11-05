@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Underglass runtime on HTML-in-Canvas</title>
+<link rel="stylesheet" href="/node_modules/@underglass/ui/dist/css/strata.css" />
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font: 14px system-ui, sans-serif; background: #fff; }
+  #frame { position: fixed; inset: 0; }
+  #status { position: fixed; right: 8px; bottom: 8px; margin: 0; color: #555; }
+  #panel {
+    position: absolute; left: 40px; top: 40px; box-sizing: border-box; width: 360px; padding: 16px;
+    display: flex; flex-direction: column; gap: 12px; background: var(--strata-colour-surface, #eee);
+  }
+  .row { display: flex; gap: 10px; align-items: center; }
+</style>
+</head>
+<body>
+<div id="frame"></div>
+<pre id="status" role="status"></pre>
+<!-- Underglass moves the panel into its WebGPU canvas and presents it with
+     drawElementImageToTexture. main.bundle.js is main.js with its npm imports. -->
+<script type="module" src="./main.bundle.js"></script>
+</body>
+</html>

@@ -221,9 +221,32 @@ test('canvas element accessors list the drawable children', async ({ page }) => 
       c.lastElementChild?.id,
       c.querySelector('#b')?.id,
       c.querySelectorAll('div').length,
+      document.getElementById('a')!.parentElement === c,
+      document.getElementById('a')!.closest('canvas') === c,
+      document.getElementById('a')!.closest('body') === document.body,
     ];
   }, BASIC);
-  expect(result).toEqual([['a', 'b'], 2, 'a', 'b', 'b', 2]);
+  expect(result).toEqual([['a', 'b'], 2, 'a', 'b', 'b', 2, true, true, true]);
+});
+
+test('element geometry leaves computed styles alone, for nested content added in the same task', async ({ page }) => {
+  const supported = await page.evaluate(() => 'updateElementGeometry' in HTMLCanvasElement.prototype);
+  test.skip(!supported, 'This build lacks updateElementGeometry');
+  const result = await page.evaluate(async () => {
+    document.body.innerHTML = '<canvas id="c" width="200" height="100" content="drawable"></canvas>';
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    const wrap = document.createElement('div');
+    const a = document.createElement('div');
+    a.setAttribute('drawable', '');
+    a.style.cssText = 'width:40px;height:20px';
+    wrap.append(a);
+    c.append(wrap);
+    c.updateElementGeometry(a, { canvasTransform: new DOMMatrix().translate(50, 25).rotate(10), canvasClip: new DOMRect(0, 0, 20, 20) });
+    await new Promise(requestAnimationFrame);
+    const cs = getComputedStyle(a);
+    return [cs.transform, cs.zIndex, cs.position, cs.getPropertyValue('clip-path'), cs.width, a.closest('canvas') === c];
+  });
+  expect(result).toEqual(['none', 'auto', 'static', 'none', '40px', true]);
 });
 
 test('nested drawables keep their space in the parent snapshot', async ({ page }) => {

@@ -1,4 +1,4 @@
-import { composedParent, isElement, reverseTreeOrder } from '../dom';
+import { composedParent, computedStyle, isElement, reverseTreeOrder } from '../dom';
 import { cssClip, cssMatrix, isFiniteMatrix, localTransform } from './matrix';
 
 /** Marks elements with geometry; the value keys their overlay rule. */
@@ -35,6 +35,12 @@ interface Entry {
 }
 
 const pending = new Set<Geometry>();
+const managed = new WeakMap<Element, Geometry>();
+
+/** The geometry whose overlay rule styles `el`, if any. */
+export function geometryOf(el: Element): Geometry | undefined {
+  return managed.get(el);
+}
 let flushing = false;
 let nextId = 1;
 
@@ -88,6 +94,7 @@ export class Geometry {
     if (!entry) {
       entry = { id: nextId++, transform: new DOMMatrix(), clip: null, rule: null, sheet: null, css: '', authored: null, applied: null };
       this.entries.set(el, entry);
+      managed.set(el, this);
       el.setAttribute(GEOMETRY_ATTR, String(entry.id));
       changed = true;
     }
@@ -109,6 +116,19 @@ export class Geometry {
       changed = true;
     }
     if (changed) this.invalidate();
+  }
+
+  /** Runs `read` with `el`'s overlay rule switched off, so styles read as authored. */
+  authored<T>(el: Element, read: () => T): T {
+    const rule = this.entries.get(el)?.rule;
+    if (!rule) return read();
+    const css = rule.style.cssText;
+    rule.style.cssText = '';
+    try {
+      return read();
+    } finally {
+      rule.style.cssText = css;
+    }
   }
 
   clear(el: Element): void {
@@ -141,7 +161,7 @@ export class Geometry {
     if (this.entries.size === 0) return;
     for (const [el, entry] of this.entries) {
       if (entry.authored) continue;
-      const cs = getComputedStyle(el);
+      const cs = computedStyle(el);
       entry.authored = { position: cs.position, clipPath: cs.clipPath || 'none' };
     }
     const origin = this.owner.contentOrigin();
@@ -187,7 +207,7 @@ export class Geometry {
     for (const a of ancestors.reverse()) {
       const entry = this.entries.get(a);
       const he = a as HTMLElement;
-      const t = entry ? entry.applied : localTransform(getComputedStyle(a), he.offsetWidth ?? 0, he.offsetHeight ?? 0);
+      const t = entry ? entry.applied : localTransform(computedStyle(a), he.offsetWidth ?? 0, he.offsetHeight ?? 0);
       if (!t) continue;
       const p = this.offset(a);
       chain = chain.translate(p.x, p.y).multiply(t).translate(-p.x, -p.y);
@@ -257,6 +277,7 @@ export class Geometry {
     if (!entry) return;
     this.deleteRule(entry);
     this.entries.delete(el);
+    managed.delete(el);
     this.stack = this.stack.filter((e) => e !== el);
     if (el.getAttribute(GEOMETRY_ATTR) === String(entry.id)) el.removeAttribute(GEOMETRY_ATTR);
   }

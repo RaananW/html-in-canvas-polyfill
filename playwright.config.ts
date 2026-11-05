@@ -16,14 +16,15 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'], deviceScaleFactor: 2, launchOptions: { args: ['--enable-unsafe-webgpu'] } },
+      // Full Chromium: the default headless shell cannot present WebGPU canvases.
+      use: { ...devices['Desktop Chrome'], channel: 'chromium', deviceScaleFactor: 2, launchOptions: { args: ['--enable-unsafe-webgpu'] } },
     },
     { name: 'webkit', use: { ...devices['Desktop Safari'], deviceScaleFactor: 2 } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
     {
       // Native implementation, used as the conformance oracle.
       name: 'native',
-      testMatch: /(conformance|gpu|visual|wicg)\.spec\.ts/,
+      testMatch: /(conformance|gpu|underglass|visual|wicg)\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         channel: 'chromium',
