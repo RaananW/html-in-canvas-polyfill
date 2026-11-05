@@ -1,0 +1,49 @@
+{
+  "name": "html-in-canvas-polyfill",
+  "version": "0.0.0",
+  "description": "Polyfill for the WICG HTML-in-Canvas proposal (drawElementImage, paint events, ElementImage).",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaananW/html-in-canvas-polyfill.git"
+  },
+  "keywords": ["html-in-canvas", "polyfill", "canvas", "drawElementImage", "wicg"],
+  "sideEffects": ["./dist/auto.js", "./dist/html-in-canvas-polyfill.iife.js"],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./auto": {
+      "types": "./dist/types/auto.d.ts",
+      "default": "./dist/auto.js"
+    },
+    "./iife": "./dist/html-in-canvas-polyfill.iife.js"
+  },
+  "files": ["dist", "README.md", "LICENSE", "docs/LIMITATIONS.md"],
+  "scripts": {
+    "build": "node scripts/build.mjs && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:browser": "node scripts/build.mjs && playwright test",
+    "size": "node scripts/size.mjs",
+    "serve": "node scripts/serve.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.14.0",
+    "globals": "^17.14.0",
+    "happy-dom": "^21.0.4",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.1.0"
+  },
+  "packageManager": "pnpm@11.23.0"
+}
