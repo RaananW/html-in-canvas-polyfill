@@ -183,3 +183,9 @@ computed styles, fonts, images, and form state, then decoded into an
 
 The path from SVG to bitmap is chosen by a feature test, not by user-agent
 sniffing. If both paths taint the canvas, `limitations` says so.
+
+On Linux, WebKitGTK resolves generic font families (`sans-serif`, …) inside
+the snapshot to a different font than the page uses, so text in that port can
+be wider or narrower than the live DOM. Safari on macOS is not affected. CI
+runs on GPU-less Linux runners: WebGL and WebGPU tests skip when the browser
+has no usable adapter, and text-heavy pixel budgets are looser there.

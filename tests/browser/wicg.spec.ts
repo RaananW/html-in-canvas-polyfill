@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { chromium, devices, expect, test, type Browser, type Page } from '@playwright/test';
 import { mismatch } from './helpers';
 
@@ -10,8 +11,11 @@ const DEMOS = [
   { file: 'pie-chart.html', canvas: 'canvas' },
   { file: 'webGL.html', canvas: '#gl-canvas' },
 ];
-// Font rasterisation differs between engines, as in visual.spec.ts.
-const BUDGET: Record<string, number> = { chromium: 0.02, webkit: 0.08, firefox: 0.08 };
+// Font rasterisation differs between engines, as in visual.spec.ts. On Linux,
+// WebKit and Firefox also pick different fonts than Chromium, which adds
+// glyph-placement noise to every comparison involving text.
+const LINUX = process.platform === 'linux';
+const BUDGET: Record<string, number> = { chromium: 0.02, webkit: LINUX ? 0.12 : 0.08, firefox: LINUX ? 0.12 : 0.08 };
 
 /**
  * WebKit lacks `device-pixel-content-box`, which every demo observes to size
@@ -72,6 +76,13 @@ test.afterAll(async () => reference?.close());
 for (const demo of DEMOS) {
   test(`WICG ${demo.file} renders like native`, async ({ page, baseURL }, info) => {
     const native = info.project.name === 'native';
+    // Mixed-script text is all this demo draws, and on Linux each engine
+    // shapes it with different fonts, so a pixel comparison with Chromium
+    // measures the fonts rather than the polyfill.
+    test.skip(
+      LINUX && demo.file === 'complex-text.html' && ['webkit', 'firefox'].includes(info.project.name),
+      'Linux engines use different fonts for complex scripts',
+    );
     const errors = await open(page, demo.file, native);
     if (demo.file === 'webGL.html') {
       // Headless Firefox on Linux CI has no WebGL.

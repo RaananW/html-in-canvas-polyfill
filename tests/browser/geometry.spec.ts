@@ -284,11 +284,29 @@ test('hover and active states are drawn, including on enclosing drawables', asyn
   );
   await page.mouse.down();
   expect(await pressed).toEqual([0, 255, 0, 255]);
-  // Let the release repaint (still hovered) land before moving away.
-  const released = nextPaint();
   await page.mouse.up();
-  await released;
-  const left = nextPaint();
+  // Repaints for the release may still be pending when the pointer leaves, so
+  // wait (bounded) for a paint that drew the un-hovered state.
+  const left = page.evaluate(
+    () =>
+      new Promise<number[]>((resolve) => {
+        const c = document.getElementById('c') as HTMLCanvasElement;
+        let last: number[] = [];
+        const done = () => {
+          c.removeEventListener('paint', onPaint);
+          resolve(last);
+        };
+        const onPaint = () => {
+          const ctx = c.getContext('2d', { willReadFrequently: true })!;
+          ctx.reset();
+          ctx.drawElementImage(document.getElementById('o')!, 0, 0);
+          last = Array.from(ctx.getImageData(150, 10, 1, 1).data);
+          if (last[2] === 0) done();
+        };
+        c.addEventListener('paint', onPaint);
+        setTimeout(done, 2000);
+      }),
+  );
   await page.mouse.move(190, 90);
-  expect((await left).outer).toEqual([0, 0, 0, 255]);
+  expect(await left).toEqual([0, 0, 0, 255]);
 });
