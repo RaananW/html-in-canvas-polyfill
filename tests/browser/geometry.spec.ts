@@ -284,7 +284,10 @@ test('hover and active states are drawn, including on enclosing drawables', asyn
   );
   await page.mouse.down();
   expect(await pressed).toEqual([0, 255, 0, 255]);
+  // Let the release repaint (still hovered) land before moving away.
+  const released = nextPaint();
   await page.mouse.up();
+  await released;
   const left = nextPaint();
   await page.mouse.move(190, 90);
   expect((await left).outer).toEqual([0, 0, 0, 255]);

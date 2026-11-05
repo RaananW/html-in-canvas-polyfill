@@ -73,6 +73,11 @@ for (const demo of DEMOS) {
   test(`WICG ${demo.file} renders like native`, async ({ page, baseURL }, info) => {
     const native = info.project.name === 'native';
     const errors = await open(page, demo.file, native);
+    if (demo.file === 'webGL.html') {
+      // Headless Firefox on Linux CI has no WebGL.
+      const gl = await page.evaluate(() => !!document.createElement('canvas').getContext('webgl2'));
+      test.skip(!gl, 'WebGL 2 is unavailable');
+    }
     const canvas = page.locator(demo.canvas);
     if (native) {
       await page.waitForTimeout(500);
@@ -95,12 +100,15 @@ for (const demo of DEMOS) {
     await context.close();
 
     let share = 1;
-    await expect
-      .poll(async () => (share = await mismatch(page, await canvas.screenshot(), expected)), { timeout: 10_000 })
-      .toBeLessThan(BUDGET[info.project.name] ?? 0.08);
-    await info.attach('native', { body: expected, contentType: 'image/png' });
-    await info.attach('polyfill', { body: await canvas.screenshot(), contentType: 'image/png' });
-    console.log(`[${info.project.name}] ${demo.file} mismatch ${(share * 100).toFixed(2)}%`);
+    try {
+      await expect
+        .poll(async () => (share = await mismatch(page, await canvas.screenshot(), expected)), { timeout: 10_000 })
+        .toBeLessThan(BUDGET[info.project.name] ?? 0.08);
+    } finally {
+      await info.attach('native', { body: expected, contentType: 'image/png' });
+      await info.attach('polyfill', { body: await canvas.screenshot(), contentType: 'image/png' });
+      console.log(`[${info.project.name}] ${demo.file} mismatch ${(share * 100).toFixed(2)}%`);
+    }
     expect(errors).toEqual([]);
   });
 }

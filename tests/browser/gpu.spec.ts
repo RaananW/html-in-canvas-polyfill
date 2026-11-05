@@ -40,9 +40,10 @@ function near(actual: number[], expected: number[]): void {
 
 test.describe('WebGL texElementSubImage2D', () => {
   test.beforeEach(async ({ page }) => {
-    await page.evaluate(() => {
+    const ok = await page.evaluate(() => {
       const c = document.getElementById('c') as HTMLCanvasElement;
-      const gl = c.getContext('webgl2')!;
+      const gl = c.getContext('webgl2');
+      if (!gl) return false;
       const w = window as unknown as Record<string, unknown>;
       w.gl = gl;
       /** A fresh, zeroed 128×64 RGBA8 texture bound to TEXTURE_2D. */
@@ -59,7 +60,10 @@ test.describe('WebGL texElementSubImage2D', () => {
           return Array.from(out);
         };
       };
+      return true;
     });
+    // Headless Firefox on Linux CI has no WebGL.
+    test.skip(!ok, 'WebGL 2 is unavailable');
   });
 
   test('uploads the border box in grid pixels', async ({ page }) => {

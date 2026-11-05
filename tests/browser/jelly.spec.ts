@@ -17,10 +17,17 @@ async function open(page: Page, path: string, errors: string[]) {
   });
   await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
   await page.goto(path);
-  return page.evaluate(async () => ({
-    gpu: !!(await navigator.gpu?.requestAdapter()),
-    polyfilled: (window as { HTMLInCanvasPolyfill?: { polyfilled: boolean } }).HTMLInCanvasPolyfill?.polyfilled ?? false,
-  }));
+  return page.evaluate(async () => {
+    const adapter = await navigator.gpu?.requestAdapter();
+    const info = adapter?.info as (GPUAdapterInfo & { isFallbackAdapter?: boolean }) | undefined;
+    const name = [info?.vendor, info?.architecture, info?.device, info?.description].join(' ');
+    return {
+      gpu: !!adapter,
+      software: !!info?.isFallbackAdapter || /swiftshader|llvmpipe|lavapipe|software/i.test(name),
+      adapter: name.trim(),
+      polyfilled: (window as { HTMLInCanvasPolyfill?: { polyfilled: boolean } }).HTMLInCanvasPolyfill?.polyfilled ?? false,
+    };
+  });
 }
 
 async function settle(page: Page) {
@@ -59,6 +66,9 @@ test('the WebGPU jelly slider renders and responds to input', async ({ page }, i
   const errors: string[] = [];
   const support = await open(page, URL, errors);
   test.skip(!support.gpu, 'WebGPU is unavailable');
+  // GPU-less CI runners only offer a software adapter (SwiftShader), on which
+  // the demo's ray-marched scene does not draw, natively or polyfilled.
+  test.skip(support.software, `WebGPU only has a software adapter (${support.adapter})`);
   // WebKit's WGSL-to-Metal compiler rejects one of TypeGPU's shaders ("no
   // matching function for call to '__unpack'" on a uniform vec3), so the
   // scene never draws there, polyfill or not.

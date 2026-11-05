@@ -9,7 +9,7 @@ const CANARY = process.env.CANARY_PATH ?? '/Applications/Google Chrome Canary.ap
 export default defineConfig({
   testDir: 'tests/browser',
   fullyParallel: true,
-  reporter: process.env.CI ? 'github' : 'list',
+  reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
   use: { baseURL: `http://localhost:${PORT}` },
   webServer: {
     command: 'node scripts/serve.mjs',
