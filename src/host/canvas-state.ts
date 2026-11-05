@@ -110,8 +110,18 @@ export class CanvasState {
       if (d) this.animating.add(d);
       this.callbacks.schedule();
     };
-    for (const type of ['input', 'change', 'focusin', 'focusout', 'scroll', 'load', 'error', 'toggle']) {
+    // :hover, :active and :focus-within also match the target's ancestors,
+    // which may be enclosing drawables.
+    const markChain = (e: Event) => {
+      if (!isElement(e.target)) return;
+      this.markWithAncestors(e.target);
+      this.callbacks.schedule();
+    };
+    for (const type of ['input', 'change', 'scroll', 'load', 'error', 'toggle']) {
       this.listeners.push([type, markTarget]);
+    }
+    for (const type of ['focusin', 'focusout', 'pointerover', 'pointerout', 'pointerdown', 'pointerup', 'pointercancel']) {
+      this.listeners.push([type, markChain]);
     }
     for (const type of ['animationstart', 'transitionrun', 'animationend', 'transitionend', 'animationcancel', 'transitioncancel']) {
       this.listeners.push([type, type.endsWith('start') || type.endsWith('run') ? animationStart : markTarget]);

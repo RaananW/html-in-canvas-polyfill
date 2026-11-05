@@ -116,13 +116,16 @@ computed styles, fonts, images, and form state, then decoded into an
 - Serialization costs about 5–50 ms for complex trees: fine for forms, menus,
   and labels, not for animating large subtrees every frame.
 - Changes are detected with MutationObserver, ResizeObserver, input, change,
-  focus, scroll, load, CSS transition/animation events, and
+  focus, pointer, scroll, load, CSS transition/animation events, and
   `document.fonts`. Changes those can't see (animations started with
   `element.animate()`, pixels of a nested canvas) aren't picked up until
   something else changes. `requestPaint()` fires `paint` but doesn't take
   new snapshots; to force one, change an attribute on the element.
 - There's no caret, selection highlight, or IME composition.
-- `:hover` and `:active` styles aren't reflected.
+- `:hover` and `:active` are drawn for elements with geometry, because
+  pointer events take new snapshots. `:active` set from the keyboard (Space
+  on a button) isn't, and neither is `:active` that ends when the pointer is
+  released outside the canvas.
 - Cross-origin images and fonts without CORS are left out. Iframes and
   `<video>` render empty. A `<canvas>` inside a drawable is copied when the
   snapshot is taken (skipped if tainted), and isn't re-copied when only its

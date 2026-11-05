@@ -237,3 +237,55 @@ test('OffscreenCanvas updates are batched and announced', async ({ page }) => {
   });
   expect(result).toEqual({ sync: 0, applied: [10, 20], cleared: true, events: [['a', 'b'], ['a']] });
 });
+
+test('hover and active states are drawn, including on enclosing drawables', async ({ page }) => {
+  const nextPaint = () =>
+    page.evaluate(async () => {
+      const c = document.getElementById('c') as HTMLCanvasElement;
+      const e = await new Promise<CanvasPaintEvent>((r) => c.addEventListener('paint', r as EventListener, { once: true }));
+      const ctx = c.getContext('2d', { willReadFrequently: true })!;
+      ctx.reset();
+      ctx.drawElementImage(document.getElementById('o')!, 0, 0);
+      const px = (x: number, y: number) => Array.from(ctx.getImageData(x, y, 1, 1).data);
+      return { changed: e.changedElements.map((el) => el.id).sort(), outer: px(150, 10) };
+    });
+  await page.evaluate(async () => {
+    document.body.innerHTML = `
+      <style>
+        body { margin: 0 }
+        #o:hover { background: rgb(0, 0, 255) !important }
+        #a:hover { background: rgb(255, 0, 0) !important }
+        #a:active { background: rgb(0, 255, 0) !important }
+      </style>
+      <canvas id="c" width="400" height="200" content="drawable" style="display:block;width:200px;height:100px">
+        <div id="o" drawable style="width:100px;height:40px;background:rgb(0,0,0)">
+          <button id="a" drawable style="display:block;width:40px;height:20px;border:0;padding:0;background:rgb(255,255,255)"></button>
+        </div>
+      </canvas>`;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    await new Promise((r) => c.addEventListener('paint', r, { once: true }));
+    const ctx = c.getContext('2d')!;
+    ctx.drawElementImage(document.getElementById('o')!, 0, 0);
+    ctx.drawElementImage(document.getElementById('a')!, 0, 0);
+  });
+  const hovered = nextPaint();
+  await page.mouse.move(10, 5);
+  expect(await hovered).toEqual({ changed: ['a', 'o'], outer: [0, 0, 255, 255] });
+  const pressed = page.evaluate(() =>
+    new Promise<number[]>((resolve) => {
+      const c = document.getElementById('c') as HTMLCanvasElement;
+      c.addEventListener('paint', () => {
+        const ctx = c.getContext('2d', { willReadFrequently: true })!;
+        ctx.reset();
+        ctx.drawElementImage(document.getElementById('a')!, 0, 0);
+        resolve(Array.from(ctx.getImageData(20, 20, 1, 1).data));
+      }, { once: true });
+    }),
+  );
+  await page.mouse.down();
+  expect(await pressed).toEqual([0, 255, 0, 255]);
+  await page.mouse.up();
+  const left = nextPaint();
+  await page.mouse.move(190, 90);
+  expect((await left).outer).toEqual([0, 0, 0, 255]);
+});
