@@ -160,3 +160,50 @@ test('throws InvalidStateError for undrawable sources', async ({ page }) => {
   );
   expect(result.closed).toMatch(/^InvalidStateError: .*The ElementImage has been closed\.$/);
 });
+
+test('draws open shadow trees with slotted content, and redraws on shadow changes', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    if (!customElements.get('x-shadow-box')) {
+      customElements.define(
+        'x-shadow-box',
+        class extends HTMLElement {
+          constructor() {
+            super();
+            this.attachShadow({ mode: 'open' }).innerHTML = `
+              <style>:host { display: block; color: rgb(0, 0, 255) } #s { width: 40px; height: 20px; background: rgb(255, 0, 0) }</style>
+              <div id="s"></div><slot></slot><slot name="none"><i style="display:block;height:10px;background:rgb(0,128,0)"></i></slot>`;
+          }
+        },
+      );
+    }
+    document.body.innerHTML = `
+      <canvas id="c" width="200" height="100" content="drawable">
+        <x-shadow-box id="a" drawable style="width:50px"><b style="display:block;height:10px;background:currentColor"></b></x-shadow-box>
+      </canvas>`;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    const a = document.getElementById('a')!;
+    const ctx = c.getContext('2d', { willReadFrequently: true })!;
+    const paint = () =>
+      new Promise<void>((r) =>
+        c.addEventListener('paint', () => {
+          ctx.reset();
+          ctx.drawElementImage(a, 0, 0);
+          r();
+        }, { once: true }),
+      );
+    const px = (x: number, y: number) => Array.from(ctx.getImageData(x, y, 1, 1).data);
+    await paint();
+    const before = { shadow: px(10, 10), slotted: px(10, 25), fallback: px(10, 35), size: [a.offsetWidth, a.offsetHeight] };
+    (a.shadowRoot!.getElementById('s') as HTMLElement).style.background = 'rgb(255, 255, 0)';
+    // Setup can leave a paint pending; wait for the one with the change.
+    for (let i = 0; i < 5 && px(10, 10)[1] !== 255; i++) await paint();
+    return { ...before, after: px(10, 10) };
+  });
+  expect(result).toEqual({
+    shadow: [255, 0, 0, 255],
+    slotted: [0, 0, 255, 255],
+    fallback: [0, 128, 0, 255],
+    size: [50, 40],
+    after: [255, 255, 0, 255],
+  });
+});

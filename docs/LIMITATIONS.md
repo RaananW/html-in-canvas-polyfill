@@ -130,7 +130,9 @@ computed styles, fonts, images, and form state, then decoded into an
   `<video>` render empty. A `<canvas>` inside a drawable is copied when the
   snapshot is taken (skipped if tainted), and isn't re-copied when only its
   pixels change.
-- Shadow DOM contents aren't serialized yet.
+- Open shadow roots are drawn, with slotted content. Closed shadow roots
+  can't be read, so their host's light children are drawn instead. Rules for
+  opaque pseudo-elements (below) are only copied from document stylesheets.
 - Opaque pseudo-elements (`::-webkit-slider-thumb`, `::marker`, …) are copied
   as stylesheet rules. Rules that depend on ancestors outside the snapshot
   don't match.

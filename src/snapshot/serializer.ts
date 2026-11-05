@@ -280,6 +280,19 @@ function copyFormState(src: Element, clone: Element): void {
   }
 }
 
+/**
+ * Children in the flat tree: an open shadow root replaces the light children,
+ * and a slot is replaced by its assigned nodes (or its fallback content).
+ */
+function flatChildren(el: Element): Node[] {
+  if (el.shadowRoot) return Array.from(el.shadowRoot.childNodes);
+  if (el instanceof HTMLSlotElement && el.getRootNode() instanceof ShadowRoot) {
+    const assigned = el.assignedNodes();
+    if (assigned.length > 0) return assigned;
+  }
+  return Array.from(el.childNodes);
+}
+
 function cloneNode(
   src: Node,
   parentStyle: Map<string, string> | null,
@@ -381,7 +394,7 @@ function cloneNode(
     target.setAttribute('style', `transform:translate(${-el.scrollLeft}px,${-el.scrollTop}px)`);
     clone.appendChild(target);
   }
-  for (const child of Array.from(el.childNodes)) {
+  for (const child of flatChildren(el)) {
     const c = cloneNode(child, csMap, ctx, false);
     if (c) target.appendChild(c);
   }
