@@ -7,7 +7,7 @@ its limitations clearly.
 
 > **Status:** phase 1 (core 2D) is done. `content="drawable"`, `paint`,
 > `requestPaint()`, `drawElementImage`, `captureElementImage`, and
-> `getElementImageDefaultSize` work in Chromium and WebKit, and are checked
+> `getElementImageDefaultSize` work in Chromium, WebKit, and Firefox, and are checked
 > against native Chromium. Element geometry, WebGL, and WebGPU come next. See
 > [docs/PLAN.md](docs/PLAN.md) and [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
 

@@ -86,7 +86,8 @@ sized to the canvas content box. There are two modes:
    `ElementImage`, `drawElementImage`, `paint` / `requestPaint`, default
    size. Conformance tests run against native Chromium 156 with the flag.
    A Strata panel drawn by the polyfill differs from the live DOM in 0.03%
-   of pixels in Chromium and 0.67% in WebKit. Underglass needs phases 2–3
+   of pixels in Chromium and 0.67% in WebKit; Firefox passes the same tests
+   within its 8% budget. Underglass needs phases 2–3
    (geometry and WebGPU), so it isn't a phase-1 smoke test.
 
    Native semantics found while testing (the polyfill follows them unless
