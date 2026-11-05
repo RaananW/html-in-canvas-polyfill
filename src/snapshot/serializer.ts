@@ -183,7 +183,14 @@ function diffStyle(
 ): Array<[string, string]> {
   const out: Array<[string, string]> = [];
   const base = baselineStyle();
+  // UA padding depends on `appearance` (WebKit themes text fields), so a
+  // default computed with another appearance can't be trusted for padding.
+  const themed = cs.get('appearance') !== defaults.get('appearance');
   for (const [name, value] of cs) {
+    if (themed && name.startsWith('padding')) {
+      out.push([name, value]);
+      continue;
+    }
     // Inherited properties compare against the parent, unless the UA sheet
     // resets them for this tag (e.g. `font` on form controls): then the
     // clone will not inherit either, so compare against the UA default.
@@ -261,12 +268,18 @@ function clonePseudo(
   }
 }
 
+const isFormControl = (el: Element) =>
+  el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement;
+
 function copyFormState(src: Element, clone: Element): void {
   if (src instanceof HTMLInputElement) {
     if (src.type === 'checkbox' || src.type === 'radio') {
       if (src.checked) clone.setAttribute('checked', '');
       else clone.removeAttribute('checked');
-    } else if (src.type !== 'file' && src.type !== 'password') {
+    } else if (src.type === 'password') {
+      // The clone masks it the same way; the real value never enters the snapshot.
+      clone.setAttribute('value', 'x'.repeat([...src.value].length));
+    } else if (src.type !== 'file') {
       clone.setAttribute('value', src.value);
     }
   } else if (src instanceof HTMLTextAreaElement) {
@@ -359,6 +372,10 @@ function cloneNode(
     decls.push(['overflow', 'hidden']);
     if (gutterX > 0 || gutterY > 0) decls.push(['scrollbar-gutter', 'stable']);
   }
+  if (el instanceof HTMLInputElement && el.scrollLeft !== 0) {
+    // Inputs can't be scrolled in the snapshot; indent the text instead.
+    decls.push(['text-indent', `calc(${csMap.get('text-indent') ?? '0px'} - ${Math.abs(el.scrollLeft)}px)`]);
+  }
   if (isRoot) {
     decls.push(
       ['margin', '0'],
@@ -388,7 +405,7 @@ function cloneNode(
   }
 
   let target: Element = clone;
-  if (el.scrollTop !== 0 || el.scrollLeft !== 0) {
+  if ((el.scrollTop !== 0 || el.scrollLeft !== 0) && !isFormControl(el)) {
     // The snapshot is static, so emulate the scroll offset by shifting content.
     target = document.createElementNS(XHTML_NS, 'div');
     target.setAttribute('style', `transform:translate(${-el.scrollLeft}px,${-el.scrollTop}px)`);

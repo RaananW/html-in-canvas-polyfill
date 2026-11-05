@@ -122,6 +122,10 @@ computed styles, fonts, images, and form state, then decoded into an
   something else changes. `requestPaint()` fires `paint` but doesn't take
   new snapshots; to force one, change an attribute on the element.
 - There's no caret, selection highlight, or IME composition.
+- Text inputs are drawn at their horizontal scroll position. Password inputs
+  are drawn as dots, without putting the value in the snapshot. Textareas are
+  drawn unscrolled; indeterminate checkboxes and file inputs' chosen file names
+  aren't drawn.
 - `:hover` and `:active` are drawn for elements with geometry, because
   pointer events take new snapshots. `:active` set from the keyboard (Space
   on a button) isn't, and neither is `:active` that ends when the pointer is
