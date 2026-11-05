@@ -5,7 +5,8 @@ An open-source, engine-agnostic polyfill for the WICG
 work as well as possible in browsers without native support, and it documents
 its limitations clearly.
 
-> **Status:** planning. There is no implementation yet. See
+> **Status:** planning. The phase 0 snapshot spike is done; its write-up is in
+> [docs/SPIKE.md](docs/SPIKE.md). There is no implementation yet. See
 > [docs/PLAN.md](docs/PLAN.md).
 
 ## Goals

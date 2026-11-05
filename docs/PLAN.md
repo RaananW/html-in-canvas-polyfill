@@ -34,7 +34,7 @@ sized to the canvas content box. There are two modes:
 | Native | Polyfill |
 |---|---|
 | `content=drawable` / `layoutsubtree` | MutationObserver on attributes → set up host |
-| snapshot per `drawable` (excl. nested drawables) | clone → inline computed styles, fonts, images (data URLs), form state → foreignObject → `img.decode()` → `createImageBitmap`; nested drawables replaced by same-size empty boxes |
+| snapshot per `drawable` (excl. nested drawables) | clone → inline computed styles, fonts, images (data URLs), form state → foreignObject (data URL only) → `img.decode()` → `createImageBitmap` (Chromium: via an intermediate canvas to avoid taint; WebKit: direct, chosen by feature test, see [SPIKE.md](SPIKE.md)); nested drawables replaced by same-size empty boxes |
 | `paint` event + `changedElements` | dirty tracking: MutationObserver, ResizeObserver, input/change/focus/scroll, transition/animation run→end (continuous), `document.fonts`, image load. Re-snapshot dirty elements, then dispatch `CanvasPaintEvent` in rAF when the bitmaps are ready. Reverse tree order. |
 | `requestPaint()` | force paint in next rAF |
 | `drawElementImage` (3 overloads) | `drawImage(bitmap, …)` scaled by DPR. Throws before the first snapshot, matching native behavior. Auto `updateElementGeometry` from `ctx.getTransform()` × dest rect unless `preserveElementGeometry` is set. |
@@ -59,18 +59,24 @@ sized to the canvas content box. There are two modes:
 - `:hover`, `:focus-visible`, and `:active` must be mirrored onto clones via
   classes.
 - Native form-control appearance inside foreignObject varies by engine.
-- Safari: foreignObject decode quirks (fonts/images need warm-up draws) and
-  possible canvas tainting, which would block WebGL/WebGPU upload. Verify this
-  in the spike.
+  WebKit draws form controls without the platform theme: no accent colour,
+  and a flat range input and select.
+- Tainting (verified in the spike): blob URLs taint everywhere. In Chromium,
+  `createImageBitmap(img)` taints, but going through an intermediate canvas
+  is clean. In WebKit, the direct bitmap is clean.
+- Opaque pseudo-elements (`::-webkit-slider-thumb`, `::marker`, …) are copied
+  as stylesheet rules. Rules that depend on ancestors outside the snapshot
+  root do not match.
 - Only flat-plane geometry is interactive. Shader-distorted or
   depth-occluded content gets correct pixels but approximate hit-testing.
 
 ## Phases
 
-0. **Spike (1–2 days)**: foreignObject snapshot of a form + styled text in
+0. **Spike (done, Firefox pending; see [SPIKE.md](SPIKE.md))**: foreignObject snapshot of a form + styled text in
    Chromium (flag off), Firefox, and WebKit. Measure taint, latency, fidelity,
    and WebGL/WebGPU upload. Decide: own serializer vs build on
-   `modern-screenshot` / `html-to-image`.
+   `modern-screenshot` / `html-to-image`. Outcome: own serializer, starting
+   from `spike/src/serializer.ts`.
 1. **Core 2D**: feature detection (respect native, including the
    ElementCanvasTransform geometry probe used in BabylonHTML), host setup,
    snapshot engine with resource cache, `ElementImage`, `drawElementImage`,
@@ -81,8 +87,9 @@ sized to the canvas content box. There are two modes:
 4. **Fidelity**: fonts, pseudo-elements, form state, interaction-state
    mirroring, scroll offsets, optional fake caret.
 5. **Testing**: Playwright on chromium/firefox/webkit. Pixel-tolerance
-   comparison against native Chrome-with-flag baselines. Run the WICG demos as
-   smoke tests. Add perf budgets.
+   comparison against native Chrome-with-flag baselines. Run the WICG demos and
+   [Underglass](https://github.com/RaananW/underglass) (including its Strata
+   design system) as smoke tests. Add perf budgets.
 
 ## Project shape (decided: standalone, open source, engine-agnostic)
 
@@ -124,5 +131,7 @@ size), Changesets for releases, npm publishing. License: MIT (to confirm).
 ## Open decisions
 
 - Repository owner/name and license.
-- Own serializer vs a dependency (bundle size vs fidelity). The spike decides.
+- ~~Own serializer vs a dependency~~ Decided: own serializer. It has better
+  fidelity, is 5–40× faster on token-heavy pages, and is the smallest at
+  3.9 KB. See [SPIKE.md](SPIKE.md).
 - Auto-relocate DOM (default) vs require the authoring-mode host (opt-in).
