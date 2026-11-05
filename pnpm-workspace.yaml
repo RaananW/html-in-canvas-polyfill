@@ -1,2 +1,7 @@
 allowBuilds:
   esbuild: true
+# The WICG jelly-slider demo's lockfile versions. tinyest 0.3.4 removed an
+# export that unplugin-typegpu 0.10.2 imports.
+overrides:
+  tinyest: 0.3.1
+  tinyest-for-wgsl: 0.3.2

@@ -185,6 +185,12 @@ sized to the canvas content box. There are two modes:
    invalid WebGPU canvas textures, even without the polyfill, so the
    polyfill Chromium project runs full Chromium.
 
+   The WICG WebGPU jelly slider (TypeGPU) uploads its value label with
+   `drawElementImageToTexture` and takes clicks and keys through a drawable
+   range input. It runs through the polyfill in Chromium; in Canary 159 the
+   native and polyfilled scenes differ in 0.07% of pixels. WebKit can't
+   compile the demo's shaders, polyfill or not, and Firefox has no WebGPU.
+
    Perf budgets cover a Strata panel of about 40 elements. Medians: first
    paint 34–50 ms (native 16 ms), update to `paint` 34–50 ms (native under
    1 ms, in the same frame), and a cached draw about 0.01 ms. Updates take

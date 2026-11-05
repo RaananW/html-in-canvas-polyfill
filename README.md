@@ -15,8 +15,8 @@ its limitations clearly.
 > elements to WebGL and WebGPU textures. Snapshots include `:hover` and
 > `:active`, open shadow trees, form state, the selection highlight, and a
 > blinking caret. The WICG demos and Strata components are compared with
-> native Chromium, [Underglass](https://github.com/RaananW/underglass) runs
-> in WebGPU mode, and perf budgets guard paint latency. See
+> native Chromium, [Underglass](https://github.com/RaananW/underglass) and
+> the WICG WebGPU jelly slider run through the polyfill, and perf budgets guard paint latency. See
 > [docs/PLAN.md](docs/PLAN.md) and [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
 
 ## Usage
@@ -69,8 +69,9 @@ pnpm build && pnpm serve                   # http://localhost:4173/examples/stra
 The Playwright project `native` runs the conformance tests against Chromium
 with `--enable-blink-features=CanvasDrawElement`. The other projects run the
 same tests against the polyfill. When Chrome Canary is installed (macOS
-default path, or set `CANARY_PATH`), the `canary` project runs Underglass on
-the full native API and compares it with the polyfill in the same browser.
+default path, or set `CANARY_PATH`), the `canary` project runs Underglass and
+the WICG jelly slider on the full native API and compares each with the
+polyfill in the same browser.
 
 ## Goals
 

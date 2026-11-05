@@ -3,14 +3,29 @@
 Unmodified copies of the demos in
 [WICG/html-in-canvas `Examples/`](https://github.com/WICG/html-in-canvas/tree/5d9d970ebc06d1903aa0f4b99ac78655b9922804/Examples)
 (commit `5d9d970`): `complex-text.html`, `nested-sparkles.html`,
-`pie-chart.html`, `webGL.html`, `webGLSetup.js` and `wolf.jpg`. The
-`webgpu-jelly-slider` demo needs a Vite build and is not included.
+`pie-chart.html`, `webGL.html`, `webGLSetup.js` and `wolf.jpg`, plus the
+`webgpu-jelly-slider` demo's `index.html`, `index.ts`, `src/` sources and
+`LICENSE`. Its unused `events.ts`, `numbers.ts` and `src/common/` and its
+Vite build files are left out.
 
 The files are byte-identical to upstream. `scripts/serve.mjs` adds the
 polyfill to each page as it serves it (`?force` replaces native support), so
 `pnpm serve` and then <http://localhost:4173/examples/wicg/pie-chart.html>
 runs a demo under the polyfill. `webGL.html` loads gl-matrix from cdnjs; the
 browser tests serve the identical npm copy instead.
+
+The jelly slider is TypeScript built on [TypeGPU](https://typegpu.com). The
+server bundles `.ts` files under `examples/` with esbuild and TypeGPU's build
+transform (the `'use gpu'` functions need it), using the same TypeGPU
+versions as the upstream lockfile. It also serves the page's root-relative
+`/index.ts` from the demo's directory.
+
+The jelly slider is based on Software Mansion's
+[Jelly Slider](https://github.com/software-mansion/TypeGPU/tree/main/apps/typegpu-docs/src/examples/rendering/jelly-slider)
+and is licensed under the MIT License in
+[webgpu-jelly-slider/LICENSE](webgpu-jelly-slider/LICENSE)
+(Copyright © 2025 Software Mansion). The license below covers the other
+files.
 
 ## License
 
