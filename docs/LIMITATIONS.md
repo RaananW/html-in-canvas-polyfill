@@ -140,6 +140,7 @@ computed styles, fonts, images, and form state, then decoded into an
 | Form controls | Native look | No platform theme: no accent colour; flat range and select | Flat text field, select, and range; checkboxes aren't painted |
 | `background-clip: text` | Yes | Yes | Lost |
 | Strata components vs live DOM (mismatched pixels) | 0.03% | 0.67% | Under the 8% test budget |
+| WebGPU tests | Pass | Pass | Skipped: Playwright's Firefox has no WebGPU adapter, even with `dom.webgpu.enabled` |
 
 The path from SVG to bitmap is chosen by a feature test, not by user-agent
 sniffing. If both paths taint the canvas, `limitations` says so.
