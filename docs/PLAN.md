@@ -178,8 +178,10 @@ sized to the canvas content box. There are two modes:
 
    [Underglass](https://github.com/RaananW/underglass) mounts a Strata panel
    in WebGPU mode under the polyfill in Chromium and accepts clicks. It needs
-   `moveBefore()`, so WebKit skips it. Its admission checks found the last
-   three items above. Playwright's default Chromium headless shell hands out
+   `moveBefore()`, so WebKit and Firefox skip it. In Chrome Canary 159, with
+   the full native API, the panel drawn natively and through the polyfill
+   differ in 0.06% of pixels. Its admission checks found the last three
+   items above. Playwright's default Chromium headless shell hands out
    invalid WebGPU canvas textures, even without the polyfill, so the
    polyfill Chromium project runs full Chromium.
 

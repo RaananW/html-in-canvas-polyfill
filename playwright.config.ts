@@ -1,6 +1,10 @@
+import { existsSync } from 'node:fs';
 import { defineConfig, devices } from '@playwright/test';
 
 const PORT = Number(process.env.PORT ?? 4173);
+// Chrome Canary with the full native API, for Underglass. Set CANARY_PATH
+// elsewhere than macOS; the project is left out when Canary isn't found.
+const CANARY = process.env.CANARY_PATH ?? '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary';
 
 export default defineConfig({
   testDir: 'tests/browser',
@@ -32,5 +36,25 @@ export default defineConfig({
         launchOptions: { args: ['--enable-blink-features=CanvasDrawElement', '--enable-unsafe-webgpu'] },
       },
     },
+    ...(existsSync(CANARY)
+      ? [
+          {
+            name: 'canary',
+            testMatch: /underglass\.spec\.ts/,
+            use: {
+              ...devices['Desktop Chrome'],
+              deviceScaleFactor: 2,
+              launchOptions: {
+                executablePath: CANARY,
+                args: [
+                  '--enable-blink-features=CanvasDrawElement,ElementCanvasTransform',
+                  '--enable-experimental-web-platform-features',
+                  '--enable-unsafe-webgpu',
+                ],
+              },
+            },
+          },
+        ]
+      : []),
   ],
 });
