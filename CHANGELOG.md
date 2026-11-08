@@ -4,6 +4,69 @@ All notable changes to `@underglass/html-in-canvas-polyfill`. The polyfill
 does nothing in browsers with native HTML-in-Canvas support, so these changes
 only affect browsers without it.
 
+## 0.4.0 (2026-11-08)
+
+### Changed
+
+- **Snapshots are incremental.** An element whose style can't have changed
+  since the last snapshot reuses its declarations, and only its sizes,
+  margins and padding (plus insets, transforms and grid tracks where they can
+  have changed) are read again. Before, every snapshot read about 380
+  computed properties of every element in the drawable, whatever changed.
+  The cost now follows the size of the change, not the size of the drawable.
+  See [docs/INCREMENTAL.md](docs/INCREMENTAL.md).
+- An element is read in full again when:
+  - a DOM change touches it, an ancestor, or (with `+`/`~` in the page's
+    CSS) a preceding sibling;
+  - a state pseudo-class (`:hover`, `:focus`, `:checked`, …) or `:has()`
+    matches it differently;
+  - it's animated, and when its animation starts and ends.
+
+  Everything is read again when stylesheets, the viewport or fonts change,
+  when an ancestor outside the canvas changes, or when a query container
+  changes size.
+- **Reused styles are re-checked in idle time.** After a snapshot, the
+  elements it reused are re-read a few milliseconds at a time, and a
+  difference takes a new snapshot, usually within a second. This catches
+  changes no rule sees, such as a stylesheet edited in place through the
+  CSSOM.
+- **Results** in Chromium, over the workloads in `bench/` (`pnpm bench`),
+  against 0.3.0:
+  - one row of a 1,000-row list changing: longest snapshot 338 → 68 ms,
+    input to paint 344 → 144 ms;
+  - typing into a 40-field form: snapshot time 1,460 → 264 ms, input to
+    paint 99 → 40 ms;
+  - hovering and clicking a 300-button grid: 4,248 → 1,059 ms;
+  - a click in Underglass's Strata gallery (one 502-element layer): longest
+    snapshot 246 → 86 ms, click to paint 242 → 56 ms (median).
+
+  Firefox and WebKit improve by similar factors: typing 1,818 → 341 ms and
+  645 → 169 ms, the list 4,006 → 696 ms and 3,025 → 679 ms. Changes that
+  touch everything, such as a theme switch, cost about what they did.
+- The main entry is 23.46 KB min+gzip, up from 20.94 KB.
+
+### Added
+
+- `install({ incremental: false })` turns reuse off and reads every element
+  in full, to rule it out when a drawing looks stale.
+- Each snapshot is an `html-in-canvas snapshot` user timing, visible in the
+  browser's performance panel. Its `detail` gives the elements read in full
+  and reused: `{ read, reused }`.
+
+### Fixed
+
+- An attribute change on an element that contains a canvas, such as a theme
+  class on a wrapper, takes new snapshots of that canvas. It used to be drawn
+  only once something inside the canvas changed.
+
+### Known limitations
+
+- Some changes still take no snapshot of their own, with or without reuse: a
+  stylesheet edited in place through the CSSOM, a media query that flips
+  without a resize (`prefers-color-scheme`), or a change to an ancestor's
+  sibling that a selector depends on. They're drawn when something else takes
+  a snapshot.
+
 ## 0.3.0 (2026-11-08)
 
 ### Changed
