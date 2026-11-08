@@ -21,6 +21,17 @@ const INHERITED_FROM_CANVAS = [
 /** Native caret blink half-period. */
 const CARET_BLINK_MS = 500;
 
+/**
+ * A running animation redraws natively every frame. Re-serializing a drawable
+ * that often can take the whole main thread when the drawable is large (an
+ * 18 px spinner in a 500-element panel took the page to 4 frames a second), so
+ * captures that only follow a running animation wait this many times their
+ * measured cost after the previous one, keeping them to about a quarter of the
+ * main thread. Cheap drawables still capture every frame. Real changes (input,
+ * mutations, hover, the animation's end) are captured at once.
+ */
+const ANIMATION_CAPTURE_SPACING = 3;
+
 export interface StateCallbacks {
   schedule(): void;
   onError(error: unknown): void;
@@ -40,6 +51,8 @@ export class CanvasState {
   private readonly inFlight = new Set<Element>();
   private readonly redo = new Set<Element>();
   private readonly animating = new Set<Element>();
+  /** Main-thread milliseconds the last capture of each drawable took, and when it ended. */
+  private readonly captureCost = new Map<Element, { ms: number; ended: number }>();
   private readonly observed = new Set<Element>();
   private allDirty = true;
   private paintRequested = false;
@@ -361,6 +374,7 @@ export class CanvasState {
         this.ready.get(el)?.release();
         this.ready.delete(el);
         this.animating.delete(el);
+        this.captureCost.delete(el);
         this.geometry.clear(el);
       }
     }
@@ -385,10 +399,17 @@ export class CanvasState {
       this.allDirty = false;
       for (const el of this.observed) this.dirty.add(el);
     }
+    const now = performance.now();
     for (const el of this.animating) {
       if (!el.isConnected || !el.getAnimations({ subtree: true }).some((a) => a.playState === 'running')) {
+        // The end state is captured at once.
         this.animating.delete(el);
+        this.dirty.add(el);
+        continue;
       }
+      if (this.dirty.has(el) || this.inFlight.has(el)) continue;
+      const last = this.captureCost.get(el);
+      if (last && now < last.ended + last.ms * ANIMATION_CAPTURE_SPACING) continue;
       this.dirty.add(el);
     }
     for (const el of this.dirty) {
@@ -408,12 +429,17 @@ export class CanvasState {
     this.inFlight.add(el);
     const scaleX = this.scaleX;
     const scaleY = this.scaleY;
-    snapshot(el, {
+    // Cloning the element and reading its styles, the main-thread work, runs
+    // before the snapshot first waits.
+    const started = performance.now();
+    const pending = snapshot(el, {
       scaleX,
       scaleY,
       isBoundary: (e) => hostStates.has(e) || this.isDrawable(e),
       rootStyle: this.geometry.authoredStyle(el),
-    })
+    });
+    const ms = performance.now() - started;
+    pending
       .then(
         (result) => {
           if (!this.observed.has(el)) {
@@ -427,6 +453,7 @@ export class CanvasState {
         (error: unknown) => this.callbacks.onError(error),
       )
       .finally(() => {
+        if (this.observed.has(el)) this.captureCost.set(el, { ms, ended: performance.now() });
         this.inFlight.delete(el);
         if (this.redo.delete(el)) this.dirty.add(el);
         this.callbacks.schedule();
@@ -459,6 +486,7 @@ export class CanvasState {
     this.snapshots.clear();
     this.ready.clear();
     this.observed.clear();
+    this.captureCost.clear();
     hostStates.delete(this.host);
     if (this.mode === 'auto') {
       for (const name of CHILD_SHIMS) delete (this.canvas as unknown as Record<string, unknown>)[name];
