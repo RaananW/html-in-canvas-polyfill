@@ -60,6 +60,7 @@ export function resetCaches(): void {
   defaultStyleCache.clear();
   sandbox?.remove();
   sandbox = null;
+  layoutUnit = undefined;
   resetSelectionCaches();
 }
 
@@ -224,9 +225,39 @@ function diffStyle(
     // clone will not inherit either, so compare against the UA default.
     const uaResets = defaults !== base && defaults.get(name) !== base.get(name);
     const ref = parent && isInherited(name) && !uaResets ? parent.get(name) : defaults.get(name);
-    if (value !== ref || ALWAYS_WRITE.has(name) || mustPairWidth(name, cs, defaults)) out.push([name, value]);
+    if (value !== ref || ALWAYS_WRITE.has(name) || mustPairWidth(name, cs, defaults)) {
+      out.push([name, SIZES.has(name) ? snapToUnit(value, layoutUnit ??= measureLayoutUnit()) : value]);
+    }
   }
   return out;
+}
+
+// Computed sizes are rounded to six significant digits ("273.281px"), while
+// layout keeps a finer unit (1/64 px in Blink and WebKit, 1/60 in Gecko). Read
+// back, a shrink-to-fit width can lose a unit and wrap its last item in the
+// clone, so sizes are written in the engine's unit, measured once.
+const SIZES = new Set([
+  'width', 'height', 'inline-size', 'block-size', 'min-width', 'min-height', 'max-width', 'max-height',
+  'min-inline-size', 'min-block-size', 'max-inline-size', 'max-block-size', 'flex-basis',
+]);
+let layoutUnit: number | undefined;
+
+function measureLayoutUnit(): number {
+  const doc = getSandboxDoc();
+  const probe = doc.createElement('div');
+  probe.style.cssText = 'width:0.02px;height:0';
+  doc.body.appendChild(probe);
+  const read = parseFloat(doc.defaultView!.getComputedStyle(probe).width);
+  probe.remove();
+  // A width kept at 0.02px (no layout, as in a DOM emulation) says nothing.
+  return read > 0 && read < 0.0199 ? 1 / Math.round(1 / read) : 0;
+}
+
+/** A computed `px` length, rounded to the nearest multiple of `unit` (none when 0). */
+export function snapToUnit(value: string, unit: number): string {
+  if (!unit || !value.endsWith('px')) return value;
+  const n = Number(value.slice(0, -2));
+  return Number.isFinite(n) ? `${Math.round(n / unit) * unit}px` : value;
 }
 
 function baselineStyle(): Map<string, string> {
