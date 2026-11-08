@@ -249,6 +249,18 @@ computed styles, fonts, images, and form state, then decoded into an
   pointer events take new snapshots. `:active` set from the keyboard (Space
   on a button) isn't, and neither is `:active` that ends when the pointer is
   released outside the canvas.
+- A pointer moving inside a drawable takes a new snapshot only when a `:hover`
+  rule now matches a different set of elements in the drawable or its
+  ancestors. Moves over elements that no `:hover` rule targets cost
+  nothing. Every move takes a snapshot when the page's rules can't be read:
+  cross-origin stylesheets without CORS, nested CSS or `@scope` rules that
+  use `:hover`, `:host`/`::part`/`::slotted` with `:hover`, or shadow roots
+  inside the drawable. A `:hover` rule inserted into an existing `@media` or
+  `@layer` block is only noticed when the stylesheet's top-level rule count
+  changes.
+- Snapshots don't read properties that can't change a still image
+  (animations, transitions, scrolling, cursor, pointer and caret properties),
+  or SVG-only properties on HTML elements.
 - Cross-origin images and fonts without CORS are left out. Iframes and
   `<video>` render empty. A `<canvas>` inside a drawable is copied when the
   snapshot is taken (skipped if tainted), and isn't re-copied when only its

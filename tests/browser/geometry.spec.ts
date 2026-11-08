@@ -348,3 +348,66 @@ test('hover and active states are drawn, including on enclosing drawables', asyn
   await page.mouse.move(190, 90);
   expect(await left).toEqual([0, 0, 0, 255]);
 });
+
+/** Four 40×20 CSS px cells in a row; moving onto #a turns #b red through a sibling combinator. */
+const HOVER_ROW = `
+  <style>
+    body { margin: 0 }
+    #a:hover ~ #b { background: rgb(255, 0, 0) !important }
+  </style>
+  <canvas id="c" width="400" height="200" content="drawable" style="display:block;width:200px;height:100px">
+    <div id="o" drawable style="display:flex;width:160px;height:20px;background:rgb(0,0,0)">
+      <i id="a" style="width:40px;background:rgb(255,255,255)"></i>
+      <i id="b" style="width:40px;background:rgb(0,0,255)"></i>
+      <i id="p" style="width:40px"></i>
+      <i id="q" style="width:40px"></i>
+    </div>
+  </canvas>`;
+
+/** Sets up HOVER_ROW (plus `extra` markup) and counts the paints that redraw #o. */
+async function hoverRow(page: import('@playwright/test').Page, extra = ''): Promise<void> {
+  await page.evaluate(async (html) => {
+    document.body.innerHTML = html;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    await new Promise((r) => c.addEventListener('paint', r, { once: true }));
+    c.getContext('2d')!.drawElementImage(document.getElementById('o')!, 0, 0);
+    const w = window as unknown as { snapshots: number; bPixel: () => number[] };
+    w.snapshots = 0;
+    c.addEventListener('paint', (e) => {
+      if ((e as CanvasPaintEvent).changedElements.some((el) => el.id === 'o')) w.snapshots++;
+    });
+    w.bPixel = () => {
+      const ctx = c.getContext('2d', { willReadFrequently: true })!;
+      ctx.reset();
+      ctx.drawElementImage(document.getElementById('o')!, 0, 0);
+      return Array.from(ctx.getImageData(100, 10, 1, 1).data);
+    };
+  }, HOVER_ROW + extra);
+}
+
+const snapshots = (page: import('@playwright/test').Page) => page.evaluate(() => (window as unknown as { snapshots: number }).snapshots);
+
+test('pointer moves that change no :hover match take no new snapshot', async ({ page }) => {
+  await hoverRow(page);
+  // #p and #q match no :hover rule, so moving among them changes nothing.
+  await page.mouse.move(100, 10);
+  await page.mouse.move(140, 10);
+  await page.mouse.move(100, 10);
+  await page.waitForTimeout(300);
+  expect(await snapshots(page)).toBe(0);
+  // Entering #a turns #b red, and leaving it turns #b back.
+  await page.mouse.move(10, 10);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { bPixel: () => number[] }).bPixel())).toEqual([255, 0, 0, 255]);
+  await page.mouse.move(100, 10);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { bPixel: () => number[] }).bPixel())).toEqual([0, 0, 255, 255]);
+});
+
+test('pointer moves still take snapshots when a stylesheet cannot be read', async ({ page, baseURL }) => {
+  // A cross-origin stylesheet without CORS hides its :hover rules.
+  const crossOrigin = new URL('/tests/browser/fixtures/plain.css', baseURL!.replace('localhost', '127.0.0.1')).href;
+  await hoverRow(page, `<link rel="stylesheet" href="${crossOrigin}">`);
+  await page.waitForFunction(() => [...document.styleSheets].some((s) => s.href?.includes('plain.css')));
+  await page.mouse.move(100, 10);
+  await page.mouse.move(140, 10);
+  await expect.poll(() => snapshots(page)).toBeGreaterThan(0);
+});
