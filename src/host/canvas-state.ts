@@ -476,6 +476,13 @@ export class CanvasState {
       rootStyle: this.geometry.authoredStyle(el),
     });
     const ms = performance.now() - started;
+    // Visible in DevTools' performance panel, and read by scripts/bench.mjs.
+    // Browsers without the options form (Safari before 14.1) throw.
+    try {
+      performance.measure('html-in-canvas snapshot', { start: started, duration: ms });
+    } catch {
+      // No measure, no harm.
+    }
     pending
       .then(
         (result) => {

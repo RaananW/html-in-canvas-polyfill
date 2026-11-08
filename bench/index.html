@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>html-in-canvas-polyfill benchmark</title>
+<style>
+  body { margin: 0; font: 14px/1.3 system-ui, sans-serif; }
+  canvas { display: block; width: 800px; height: 600px; }
+</style>
+<!-- Workloads for scripts/bench.mjs. `?native` leaves the polyfill out. -->
+<script type="module">
+  const native = new URLSearchParams(location.search).has('native');
+  if (!native) {
+    const polyfill = await import('/dist/index.js');
+    polyfill.install({ force: true });
+  }
+  window.__ready = true;
+</script>
