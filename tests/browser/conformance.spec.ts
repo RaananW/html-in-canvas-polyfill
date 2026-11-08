@@ -430,6 +430,42 @@ test('nested drawables keep their space in the parent snapshot', async ({ page }
   expect(result).toEqual({ nested: 0, tail: true });
 });
 
+// Values a page sets back to the plain UA default, where a UA rule for the
+// element's state or context would otherwise apply in the snapshot: a radio
+// without its native appearance (round only with it), a disabled field's
+// background (grey) and a nested list's markers (circles).
+test('keeps page styles over UA rules for state and context', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    document.body.innerHTML = `
+      <canvas id="c" width="600" height="200" style="width:300px;height:100px" content="drawable">
+        <div id="d" drawable style="position:relative;width:300px;height:100px;font:16px/20px sans-serif;color:black">
+          <input type="radio" style="appearance:none;position:absolute;left:0;top:0;margin:0;width:20px;height:20px;border:0;border-radius:50%;background:rgb(0,0,255)">
+          <input disabled style="position:absolute;left:40px;top:0;margin:0;width:60px;height:20px;border:0;padding:0;background-color:Field;color:Field">
+          <ul style="position:absolute;left:120px;top:0;margin:0;padding:0;list-style:none">
+            <li>a<ul style="margin:0;padding:0 0 0 40px;list-style:none"><li>b</li></ul></li>
+          </ul>
+        </div>
+      </canvas>`;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    const d = document.getElementById('d')!;
+    await new Promise((r) => c.addEventListener('paint', r, { once: true }));
+    const ctx = c.getContext('2d', { willReadFrequently: true })!;
+    ctx.drawElementImage(d, 0, 0);
+    const px = (x: number, y: number) => Array.from(ctx.getImageData(x, y, 1, 1).data);
+    const field = getComputedStyle(document.querySelector('input[disabled]')!).backgroundColor.match(/\d+/g)!.slice(0, 3).map(Number);
+    // Ink in the nested item's indent (CSS 120–160, 20–40), where a marker would be.
+    const indent = ctx.getImageData(240, 40, 80, 40).data;
+    let ink = 0;
+    for (let i = 3; i < indent.length; i += 4) if (indent[i]! > 0) ink++;
+    // In grid pixels (scale 2).
+    return { corner: px(2, 2), centre: px(20, 20), field: [px(140, 20).slice(0, 3), field], ink };
+  });
+  expect(result.corner).toEqual([0, 0, 0, 0]);
+  expect(result.centre).toEqual([0, 0, 255, 255]);
+  expect(result.field[0]).toEqual(result.field[1]);
+  expect(result.ink).toBe(0);
+});
+
 test('draws open shadow trees with slotted content, and redraws on shadow changes', async ({ page }) => {
   const result = await page.evaluate(async () => {
     if (!customElements.get('x-shadow-box')) {

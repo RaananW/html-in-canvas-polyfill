@@ -112,21 +112,42 @@ function styleToMap(cs: CSSStyleDeclaration, custom: ReadonlySet<string> = EMPTY
 
 const EMPTY: ReadonlySet<string> = new Set();
 
-// UA defaults differ per input type (a checkbox has margins, a text input does not).
+const LISTS = new Set(['ul', 'ol', 'menu', 'dir']);
+
+// UA defaults differ per input type (a checkbox has margins, a text input does
+// not), and UA rules key on state and context too: a `:disabled` field turns
+// grey, a nested list gets circle markers, and a radio is round only with its
+// native `appearance`. A value the page sets back to the plain default would be
+// left out, and the clone would take the UA's, so the default is read from an
+// element in the same state. Its `appearance` stays the UA's, so a changed one
+// is still written.
 function getDefaultStyle(src: Element, pseudo: string | null): Map<string, string> {
   const type = src instanceof HTMLInputElement ? src.type : '';
-  const key = `${src.localName}[${type}]${pseudo ?? ''}`;
-  let cached = defaultStyleCache.get(key);
-  if (!cached) {
-    const doc = getSandboxDoc();
-    const el = doc.createElement(src.localName);
-    if (type) el.setAttribute('type', type);
-    doc.body.appendChild(el);
-    cached = styleToMap(doc.defaultView!.getComputedStyle(el, pseudo), EMPTY, src instanceof SVGElement);
-    el.remove();
-    defaultStyleCache.set(key, cached);
-  }
-  return cached;
+  const appearance = pseudo ? '' : computedStyle(src).appearance;
+  const disabled = src.matches(':disabled');
+  const nested = LISTS.has(src.localName) && !!src.parentElement?.closest('ul,ol,menu,dir');
+  const key = `${src.localName}[${type}]${pseudo ?? ''}${disabled ? ':' : ''}${nested ? '>' : ''}`;
+  const read = (key: string, appearance = '') => {
+    let style = defaultStyleCache.get(key);
+    if (!style) {
+      const doc = getSandboxDoc();
+      const parent = nested ? doc.body.appendChild(doc.createElement('ul')) : doc.body;
+      const el = parent.appendChild(doc.createElement(src.localName)) as HTMLElement;
+      if (type) el.setAttribute('type', type);
+      el.toggleAttribute('disabled', disabled);
+      el.style.appearance = appearance;
+      style = styleToMap(doc.defaultView!.getComputedStyle(el, pseudo), EMPTY, src instanceof SVGElement);
+      (nested ? parent : el).remove();
+      defaultStyleCache.set(key, style);
+    }
+    return style;
+  };
+  const plain = read(key);
+  const ua = plain.get('appearance')!;
+  if (!appearance || appearance === ua) return plain;
+  const themed = read(`${key}{${appearance}}`, appearance);
+  themed.set('appearance', ua);
+  return themed;
 }
 
 function readAsDataUrl(blob: Blob): Promise<string> {
