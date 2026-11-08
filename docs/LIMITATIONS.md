@@ -195,10 +195,13 @@ Differences:
   cssHeight, defaultWidth, defaultHeight }` with an `ImageBitmap` it can draw
   with `drawImage`, and the top-level message object gains
   `__hicElementImage: 2`. It has no `close()`.
-- Native Chromium only draws an `ElementImage` into the canvas it was
-  captured from (or the `OffscreenCanvas` transferred from it), and WebGPU
-  uploads need that canvas to have a rendering context. The polyfill doesn't
-  check either, in workers or on the main thread.
+- As natively, an `ElementImage` is only drawn, uploaded with WebGL, or sized
+  with `getElementImageDefaultSize` by the canvas it was captured from (or
+  the `OffscreenCanvas` transferred from it); others throw
+  `InvalidStateError`. The polyfill can't check this for an image received
+  from another thread, so a worker accepts any canvas. Native WebGPU uploads
+  also need that canvas to have a rendering context; the polyfill doesn't
+  check that.
 - Geometry from a worker doesn't reach the main thread yet:
   `updateElementGeometry`, `clearElementGeometry` and the automatic geometry of
   `drawElementImage` in a worker do nothing. Set geometry on the main thread
