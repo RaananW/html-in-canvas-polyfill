@@ -21,7 +21,7 @@ test('lays the host over the canvas content box', async ({ page }) => {
     return {
       host: [hr.left - cr.left, hr.top - cr.top, hr.width, hr.height],
       child: [ar.left - cr.left, ar.top - cr.top],
-      opacity: getComputedStyle(host).opacity,
+      hidden: [getComputedStyle(host).opacity, getComputedStyle(host).filter],
       // Element-level reads still see the canvas as the parent.
       parent: [a.parentNode === host, a.parentElement === c],
       hit: document.elementFromPoint(cr.left + 10, cr.top + 10) === c,
@@ -29,7 +29,7 @@ test('lays the host over the canvas content box', async ({ page }) => {
   }, BASIC);
   expect(result.host).toEqual([5, 5, 200, 100]);
   expect(result.child).toEqual([5, 5]);
-  expect(result.opacity).toBe('0');
+  expect(result.hidden).toEqual(['1', 'opacity(0)']);
   expect(result.parent).toEqual([true, true]);
   expect(result.hit).toBe(true);
 });
