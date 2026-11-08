@@ -122,6 +122,70 @@ test('paint after requestPaint has records for children added in the same task',
   expect(result).toEqual([0, 0, 255, 255]);
 });
 
+test('an ElementImage is only drawn into the canvas it was captured from', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    document.body.innerHTML = `
+      <canvas id="c" width="400" height="200" content="drawable"><div id="a" drawable style="width:50px;height:20px;background:red"></div></canvas>
+      <canvas id="d" width="400" height="200" content="drawable"><div id="b" drawable style="width:5px;height:5px;background:blue"></div></canvas>
+      <canvas id="g" width="400" height="200" content="drawable"></canvas>
+      <canvas id="t" width="400" height="200" content="drawable"><div id="f" drawable style="width:5px;height:5px;background:blue"></div></canvas>
+      <canvas id="plain" width="10" height="10"></canvas>`;
+    const byId = (id: string) => document.getElementById(id) as HTMLCanvasElement;
+    const [c, d, t] = [byId('c'), byId('d'), byId('t')];
+    await Promise.all([c, d, t].map((x) => new Promise((r) => x.addEventListener('paint', r, { once: true }))));
+    const a = document.getElementById('a')!;
+    const image = () => c.captureElementImage(a);
+    const attempt = (fn: () => unknown) => {
+      try {
+        fn();
+        return 'ok';
+      } catch (e) {
+        return `${(e as Error).name}: ${(e as Error).message}`;
+      }
+    };
+    const r: Record<string, string> = {
+      same: attempt(() => c.getContext('2d')!.drawElementImage(image(), 0, 0)),
+      other: attempt(() => d.getContext('2d')!.drawElementImage(image(), 0, 0)),
+      plain: attempt(() => byId('plain').getContext('2d')!.drawElementImage(image(), 0, 0)),
+    };
+    // Native Chromium 156 has no getElementImageDefaultSize.
+    if ('getElementImageDefaultSize' in d) r.defaultSize = attempt(() => d.getElementImageDefaultSize(image()));
+    const gl = byId('g').getContext('webgl2');
+    if (gl) {
+      gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 128, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      r.webgl = attempt(() => gl.texElementSubImage2D(gl.TEXTURE_2D, 0, 0, 0, image()));
+    }
+    if (typeof OffscreenCanvas !== 'undefined' && 'transferControlToOffscreen' in t) {
+      r.fresh = attempt(() => new OffscreenCanvas(10, 10).getContext('2d')!.drawElementImage(image(), 0, 0));
+      const offscreen = t.transferControlToOffscreen();
+      const ctx = offscreen.getContext('2d')!;
+      r.transferred = attempt(() => ctx.drawElementImage(t.captureElementImage(document.getElementById('f')!), 0, 0));
+      r.transferredOther = attempt(() => ctx.drawElementImage(image(), 0, 0));
+    }
+    // The image stays bound to the canvas it was captured from.
+    const before = image();
+    d.append(a);
+    await new Promise((res) => setTimeout(res, 50));
+    r.movedOriginal = attempt(() => c.getContext('2d')!.drawElementImage(before, 0, 0));
+    r.movedNew = attempt(() => d.getContext('2d')!.drawElementImage(before, 0, 0));
+    return r;
+  });
+  const other = 'InvalidStateError: The source was captured from a different canvas.';
+  const message = (s: string) => s.replace(/Failed to execute '[^']+' on '[^']+': /, '');
+  const actual = Object.fromEntries(Object.entries(result).map(([k, v]) => [k, message(v)]));
+  expect(actual).toEqual({
+    same: 'ok',
+    other,
+    plain: other,
+    ...('defaultSize' in result ? { defaultSize: other } : {}),
+    ...('webgl' in result ? { webgl: other } : {}),
+    ...('fresh' in result ? { fresh: other, transferred: 'ok', transferredOther: other } : {}),
+    movedOriginal: 'ok',
+    movedNew: other,
+  });
+});
+
 test('throws InvalidStateError for undrawable sources', async ({ page }) => {
   const result = await page.evaluate(async (html) => {
     document.body.innerHTML =

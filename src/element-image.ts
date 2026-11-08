@@ -39,9 +39,29 @@ export class ElementImage {
   }
 }
 
+/** The canvas each image was captured from. Images received from another thread have none. */
+const origins = new WeakMap<ElementImage, HTMLCanvasElement>();
+
 /** Wraps a record in a new ElementImage, which holds its own reference. */
-export function createElementImage(record: SnapshotRecord): ElementImage {
-  return new ElementImage(token, record);
+export function createElementImage(record: SnapshotRecord, origin?: HTMLCanvasElement): ElementImage {
+  const image = new ElementImage(token, record);
+  if (origin) origins.set(image, origin);
+  return image;
+}
+
+/**
+ * The record, once `canvas` is checked against the one the image was
+ * captured from. As natively, the closed check comes first.
+ */
+export function imageRecordFor(
+  image: ElementImage,
+  canvas: HTMLCanvasElement | undefined,
+  message = 'The source was captured from a different canvas.',
+): SnapshotRecord {
+  const record = elementImageRecord(image);
+  const origin = origins.get(image);
+  if (origin && origin !== canvas) throw invalidState(message);
+  return record;
 }
 
 export function elementImageRecord(image: ElementImage): SnapshotRecord {
