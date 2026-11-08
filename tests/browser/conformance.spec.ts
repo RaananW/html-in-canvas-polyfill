@@ -407,3 +407,26 @@ for (const kind of ['input-caret', 'editable-caret'] as const) {
     expect(result.cleared?.caret).toEqual([]);
   });
 }
+
+test('changes made together are painted together, even when one snapshot is slower', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    // #big has 400 children and gains an uncached background image, which the
+    // polyfill fetches before decoding, so its snapshot takes far longer than #small's.
+    const cells = Array.from({ length: 400 }, (_, i) => `<span style="display:inline-block;width:4px;height:4px;background:rgb(${i % 255},0,0)"></span>`).join('');
+    document.body.innerHTML = `
+      <canvas id="c" width="400" height="200" content="drawable">
+        <div id="big" drawable style="width:160px;line-height:0">${cells}</div>
+        <div id="small" drawable style="width:10px;height:10px;background:rgb(0,0,255)"></div>
+      </canvas>`;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    await new Promise((r) => c.addEventListener('paint', r, { once: true }));
+    const paints: string[][] = [];
+    c.addEventListener('paint', (e) => paints.push((e as CanvasPaintEvent).changedElements.map((x) => x.id).sort()));
+    document.getElementById('big')!.style.background = `rgb(0,255,0) url(/examples/wicg/wolf.jpg?${Math.random()}) no-repeat`;
+    document.getElementById('small')!.style.background = 'rgb(255,0,0)';
+    const until = performance.now() + 3000;
+    while (!paints.some((p) => p.includes('big')) && performance.now() < until) await new Promise((r) => setTimeout(r, 20));
+    return paints;
+  });
+  expect(result[0]).toEqual(['big', 'small']);
+});

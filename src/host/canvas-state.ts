@@ -50,6 +50,13 @@ export class CanvasState {
   private readonly ready = new Map<Element, SnapshotRecord>();
   private readonly dirty = new Set<Element>();
   private readonly inFlight = new Set<Element>();
+  /**
+   * The tick each capture started in. Captures started together are painted
+   * together, like native's single paint per frame.
+   */
+  private readonly inFlightBatch = new Map<Element, number>();
+  private readonly readyBatch = new Map<Element, number>();
+  private ticks = 0;
   private readonly redo = new Set<Element>();
   private readonly animating = new Set<Element>();
   /** Drawables a pointer entered or left, checked for :hover changes on the next tick. */
@@ -387,6 +394,7 @@ export class CanvasState {
         this.snapshots.delete(el);
         this.ready.get(el)?.release();
         this.ready.delete(el);
+        this.readyBatch.delete(el);
         this.animating.delete(el);
         this.captureCost.delete(el);
         this.geometry.clear(el);
@@ -402,6 +410,7 @@ export class CanvasState {
 
   /** One frame of work. Returns true while more frames are needed. */
   tick(): boolean {
+    this.ticks++;
     if (this.structureChanged) {
       this.structureChanged = false;
       this.syncStructure();
@@ -440,12 +449,17 @@ export class CanvasState {
 
     // Like native, every drawable has a paint record by the time paint fires.
     const firstCapture = [...this.inFlight].some((el) => !this.snapshots.has(el) && !this.ready.has(el));
-    if ((this.ready.size > 0 || this.blinked.size > 0 || this.paintRequested) && !firstCapture) this.dispatchPaint();
+    // A snapshot waits for the others that started in the same tick.
+    const running = new Set(this.inFlightBatch.values());
+    const held = [...this.readyBatch.values()].some((batch) => running.has(batch));
+    if ((this.ready.size > 0 || this.blinked.size > 0 || this.paintRequested) && !firstCapture && !held) this.dispatchPaint();
     return this.inFlight.size > 0 || this.dirty.size > 0 || this.animating.size > 0;
   }
 
   private capture(el: Element): void {
     this.inFlight.add(el);
+    const batch = this.ticks;
+    this.inFlightBatch.set(el, batch);
     this.hoverSignatures.set(el, hoverSignature(el));
     const scaleX = this.scaleX;
     const scaleY = this.scaleY;
@@ -469,12 +483,14 @@ export class CanvasState {
           }
           this.ready.get(el)?.release();
           this.ready.set(el, new SnapshotRecord(result, scaleX, scaleY, el));
+          this.readyBatch.set(el, batch);
         },
         (error: unknown) => this.callbacks.onError(error),
       )
       .finally(() => {
         if (this.observed.has(el)) this.captureCost.set(el, { ms, ended: performance.now() });
         this.inFlight.delete(el);
+        this.inFlightBatch.delete(el);
         if (this.redo.delete(el)) this.dirty.add(el);
         this.callbacks.schedule();
       });
@@ -490,6 +506,7 @@ export class CanvasState {
     if (caretChanged) this.restartBlink();
     const changedElements = reverseTreeOrder(new Set([...this.ready.keys(), ...this.blinked]));
     this.ready.clear();
+    this.readyBatch.clear();
     this.blinked.clear();
     this.paintRequested = false;
     this.canvas.dispatchEvent(new CanvasPaintEvent('paint', { changedElements }));
@@ -505,6 +522,7 @@ export class CanvasState {
     for (const record of this.ready.values()) record.release();
     this.snapshots.clear();
     this.ready.clear();
+    this.readyBatch.clear();
     this.observed.clear();
     this.captureCost.clear();
     hostStates.delete(this.host);
