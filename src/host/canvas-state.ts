@@ -1,6 +1,7 @@
 import { composedParent, computedStyle, HOST_ATTR, isElement, reverseTreeOrder } from '../dom.js';
 import { Geometry } from '../geometry/state.js';
 import { CanvasPaintEvent } from '../paint/event.js';
+import { type HoverSignature, hoverSignature, sameSignature } from '../snapshot/hover.js';
 import { SnapshotRecord } from '../snapshot/record.js';
 import { snapshot } from '../snapshot/serializer.js';
 
@@ -51,6 +52,10 @@ export class CanvasState {
   private readonly inFlight = new Set<Element>();
   private readonly redo = new Set<Element>();
   private readonly animating = new Set<Element>();
+  /** Drawables a pointer entered or left, checked for :hover changes on the next tick. */
+  private readonly hoverChecks = new Set<Element>();
+  /** What the :hover selectors matched when each drawable was last captured. */
+  private readonly hoverSignatures = new WeakMap<Element, HoverSignature>();
   /** Main-thread milliseconds the last capture of each drawable took, and when it ended. */
   private readonly captureCost = new Map<Element, { ms: number; ended: number }>();
   private readonly observed = new Set<Element>();
@@ -132,9 +137,18 @@ export class CanvasState {
     for (const type of ['input', 'change', 'scroll', 'load', 'error', 'toggle']) {
       this.listeners.push([type, markTarget]);
     }
-    for (const type of ['focusin', 'focusout', 'pointerover', 'pointerout', 'pointerdown', 'pointerup', 'pointercancel']) {
+    for (const type of ['focusin', 'focusout', 'pointerdown', 'pointerup', 'pointercancel']) {
       this.listeners.push([type, markChain]);
     }
+    // Most pointer moves change no :hover match; those are checked on the next tick.
+    const checkHover = (e: Event) => {
+      if (!isElement(e.target)) return;
+      for (let n: Node | null = e.target; n && n !== this.host; n = composedParent(n)) {
+        if (isElement(n) && this.isDrawable(n)) this.hoverChecks.add(n);
+      }
+      this.callbacks.schedule();
+    };
+    for (const type of ['pointerover', 'pointerout']) this.listeners.push([type, checkHover]);
     for (const type of ['animationstart', 'transitionrun', 'animationend', 'transitionend', 'animationcancel', 'transitioncancel']) {
       this.listeners.push([type, type.endsWith('start') || type.endsWith('run') ? animationStart : markTarget]);
     }
@@ -399,6 +413,11 @@ export class CanvasState {
       this.allDirty = false;
       for (const el of this.observed) this.dirty.add(el);
     }
+    for (const el of this.hoverChecks) {
+      const last = this.hoverSignatures.get(el);
+      if (!last || !sameSignature(last, hoverSignature(el))) this.dirty.add(el);
+    }
+    this.hoverChecks.clear();
     const now = performance.now();
     for (const el of this.animating) {
       if (!el.isConnected || !el.getAnimations({ subtree: true }).some((a) => a.playState === 'running')) {
@@ -427,6 +446,7 @@ export class CanvasState {
 
   private capture(el: Element): void {
     this.inFlight.add(el);
+    this.hoverSignatures.set(el, hoverSignature(el));
     const scaleX = this.scaleX;
     const scaleY = this.scaleY;
     // Cloning the element and reading its styles, the main-thread work, runs

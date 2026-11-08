@@ -78,19 +78,30 @@ function getSandboxDoc(): Document {
   return sandbox.contentDocument!;
 }
 
-let standardNames: string[] | null = null;
+let standardNames: { html: string[]; svg: string[] } | null = null;
+
+// Properties that can't change a still picture: motion, scrolling and
+// interaction. Snapshots set animation and transition to none, and the caret
+// is drawn from the live element.
+const NOT_PAINTED =
+  /^(?:animation|transition|scroll-(?:behavior|margin|padding|snap|timeline|initial-target)|view-timeline|timeline-scope|overscroll-behavior|caret|cursor$|pointer-events$|touch-action$|(?:-webkit-)?user-(?:select|drag|modify)$|-webkit-tap-highlight-color$|interactivity$|interpolate-size$|speak$|(?:-webkit-)?app-region$)/;
+// Properties only SVG elements use. An SVG descendant still reads them, and
+// writes them, since its HTML parent has no value to inherit.
+const SVG_ONLY =
+  /^(?:fill|stroke|marker|stop-|flood-|lighting-color$|shape-rendering$|vector-effect$|dominant-baseline$|alignment-baseline$|baseline-shift$|text-anchor$|color-rendering$|color-interpolation$|clip-rule$|(?:cx|cy|r|rx|ry|x|y|d)$|buffered-rendering$|mask-type$)/;
 
 // Enumerating a computed style also yields every inherited custom property;
 // design systems put hundreds on :root (Strata: ~300), tripling the cost.
 // Computed values are already var()-resolved, so only custom properties used
 // by verbatim-copied rules are read.
-function styleToMap(cs: CSSStyleDeclaration, custom: ReadonlySet<string> = EMPTY): Map<string, string> {
+function styleToMap(cs: CSSStyleDeclaration, custom: ReadonlySet<string> = EMPTY, svg = false): Map<string, string> {
   if (!standardNames) {
-    standardNames = [];
-    for (let i = 0; i < cs.length; i++) if (!cs[i]!.startsWith('--')) standardNames.push(cs[i]!);
+    const all: string[] = [];
+    for (let i = 0; i < cs.length; i++) if (!cs[i]!.startsWith('--') && !NOT_PAINTED.test(cs[i]!)) all.push(cs[i]!);
+    standardNames = { svg: all, html: all.filter((name) => !SVG_ONLY.test(name)) };
   }
   const map = new Map<string, string>();
-  for (const name of standardNames) map.set(name, cs.getPropertyValue(name));
+  for (const name of svg ? standardNames.svg : standardNames.html) map.set(name, cs.getPropertyValue(name));
   for (const name of custom) {
     const v = cs.getPropertyValue(name);
     if (v) map.set(name, v);
@@ -110,7 +121,7 @@ function getDefaultStyle(src: Element, pseudo: string | null): Map<string, strin
     const el = doc.createElement(src.localName);
     if (type) el.setAttribute('type', type);
     doc.body.appendChild(el);
-    cached = styleToMap(doc.defaultView!.getComputedStyle(el, pseudo));
+    cached = styleToMap(doc.defaultView!.getComputedStyle(el, pseudo), EMPTY, src instanceof SVGElement);
     el.remove();
     defaultStyleCache.set(key, cached);
   }
@@ -354,7 +365,7 @@ function cloneNode(
     return box;
   }
 
-  const csMap = styleToMap(computedStyle(el), ctx.customProps);
+  const csMap = styleToMap(computedStyle(el), ctx.customProps, el instanceof SVGElement);
   if (!isRoot && ctx.isBoundary?.(el)) {
     // Nested drawables have their own snapshots. Keep the box so siblings lay
     // out the same, but paint nothing.
