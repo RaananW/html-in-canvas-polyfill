@@ -86,7 +86,17 @@ pnpm install
 pnpm lint && pnpm typecheck && pnpm test   # static checks and unit tests
 pnpm test:browser                          # builds, then runs Playwright
 pnpm build && pnpm serve                   # http://localhost:4173/examples/strata/
+pnpm bench                                 # builds, then benchmarks snapshot cost
 ```
+
+`pnpm bench` runs the workloads in `bench/workloads.mjs` (a form, a 1,000-row
+list, a hover grid, a theme switch, a transition in a large layer, and the
+WICG demos) and reports snapshots taken, their main-thread time, input to
+paint latency and long tasks. Its options are listed at the top of
+`scripts/bench.mjs`: `--browser`, `--runs`, `--dist` to compare another
+build, and `--external` for the Underglass demos. Each snapshot is also an
+`html-in-canvas snapshot` user timing, visible in the browser's performance
+panel.
 
 The Playwright project `native` runs the conformance tests against Chromium
 with `--enable-blink-features=CanvasDrawElement`. The other projects run the
