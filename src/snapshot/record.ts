@@ -1,5 +1,8 @@
 import type { SnapshotResult } from './serializer.js';
 
+/** A snapshot's sizes, without its pixels. */
+export type SnapshotSize = Pick<SnapshotRecord, 'width' | 'height' | 'cssWidth' | 'cssHeight' | 'defaultWidth' | 'defaultHeight'>;
+
 /** A ref-counted snapshot shared by the canvas and any ElementImage. */
 export class SnapshotRecord {
   private readonly on: ImageBitmap | null;
@@ -19,11 +22,11 @@ export class SnapshotRecord {
   private refs = 1;
 
   constructor(
-    result: SnapshotResult,
+    result: Pick<SnapshotResult, 'bitmap' | 'caretOff' | 'width' | 'height' | 'cssWidth' | 'cssHeight'>,
     scaleX: number,
     scaleY: number,
-    /** The element the snapshot was taken of. */
-    readonly element: Element,
+    /** The element the snapshot was taken of; null when it came from another thread. */
+    readonly element: Element | null,
   ) {
     this.on = result.bitmap;
     this.caretOff = result.caretOff ?? null;

@@ -28,7 +28,7 @@ export default defineConfig({
     {
       // Native implementation, used as the conformance oracle.
       name: 'native',
-      testMatch: /(conformance|gpu|jelly|perf|underglass|visual|wicg)\.spec\.ts/,
+      testMatch: /(conformance|gpu|jelly|perf|underglass|visual|wicg|worker)\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         channel: 'chromium',
@@ -40,7 +40,7 @@ export default defineConfig({
       ? [
           {
             name: 'canary',
-            testMatch: /(jelly|underglass)\.spec\.ts/,
+            testMatch: /(jelly|underglass|worker)\.spec\.ts/,
             use: {
               ...devices['Desktop Chrome'],
               deviceScaleFactor: 2,

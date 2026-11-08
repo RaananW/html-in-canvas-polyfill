@@ -1,6 +1,7 @@
-import { drawElementImage, recordFor } from './contexts/2d.js';
-import { texElementSubImage2D } from './contexts/webgl.js';
-import { drawElementImageToTexture } from './contexts/webgpu.js';
+import { drawElementImage, gpuRecordFor, recordFor } from './contexts/2d.js';
+import { texElementSubImage2DWith } from './contexts/webgl.js';
+import { drawElementImageToTextureWith } from './contexts/webgpu.js';
+import { define, method, restoreAll } from './define.js';
 import { HOST_ATTR, invalidState, isElement } from './dom.js';
 import { createElementImage, ElementImage, elementImageRecord } from './element-image.js';
 import { linkPlaceholder, placeholderOf, queueOffscreenGeometry } from './geometry/offscreen.js';
@@ -8,22 +9,7 @@ import { flushGeometry, geometryOf, type GeometryUpdate } from './geometry/state
 import { autoCanvasOf, type CanvasState, nearestState } from './host/canvas-state.js';
 import { CanvasPaintEvent, ElementGeometryUpdateEvent } from './paint/event.js';
 import { getState, observeRoot, syncCanvas } from './runtime.js';
-
-type Restore = () => void;
-const restores: Restore[] = [];
-
-function define(target: object, name: string, descriptor: PropertyDescriptor): void {
-  const previous = Object.getOwnPropertyDescriptor(target, name);
-  Object.defineProperty(target, name, { configurable: true, enumerable: true, ...descriptor });
-  restores.push(() => {
-    if (previous) Object.defineProperty(target, name, previous);
-    else delete (target as Record<string, unknown>)[name];
-  });
-}
-
-function method(target: object, name: string, fn: (...args: never[]) => unknown): void {
-  define(target, name, { value: fn, writable: true, enumerable: true });
-}
+import { patchMessaging } from './transfer.js';
 
 /** An `on<type>` IDL event handler attribute. */
 function eventHandler(target: object, type: string): void {
@@ -171,10 +157,14 @@ export function patch(): void {
   if (typeof OffscreenCanvasRenderingContext2D !== 'undefined') {
     method(OffscreenCanvasRenderingContext2D.prototype, 'drawElementImage', drawElementImage);
   }
+  const texElementSubImage2D = texElementSubImage2DWith(recordFor);
   for (const gl of [globalThis.WebGLRenderingContext, globalThis.WebGL2RenderingContext]) {
     if (gl) method(gl.prototype, 'texElementSubImage2D', texElementSubImage2D);
   }
-  if (typeof GPUQueue !== 'undefined') method(GPUQueue.prototype, 'drawElementImageToTexture', drawElementImageToTexture);
+  if (typeof GPUQueue !== 'undefined') {
+    method(GPUQueue.prototype, 'drawElementImageToTexture', drawElementImageToTextureWith(gpuRecordFor));
+  }
+  patchMessaging();
   if (typeof OffscreenCanvas !== 'undefined') {
     method(OffscreenCanvas.prototype, 'getElementImageDefaultSize', function (source: unknown) {
       if (!(source instanceof ElementImage)) throw new TypeError("The provided value is not of type 'ElementImage'.");
@@ -260,5 +250,5 @@ const GEOMETRY_PROPS = new Set(
 );
 
 export function unpatch(): void {
-  for (const restore of restores.splice(0).reverse()) restore();
+  restoreAll();
 }

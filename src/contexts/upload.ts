@@ -67,11 +67,12 @@ export function isDirectCopy(record: SnapshotRecord, r: UploadRegion): boolean {
   );
 }
 
-let scratch: HTMLCanvasElement | undefined;
+let scratch: HTMLCanvasElement | OffscreenCanvas | undefined;
 
 /** Renders the region into a shared canvas of the destination size. Valid until the next call. */
-export function rasterize(record: SnapshotRecord, r: UploadRegion): HTMLCanvasElement {
-  scratch ??= document.createElement('canvas');
+export function rasterize(record: SnapshotRecord, r: UploadRegion): HTMLCanvasElement | OffscreenCanvas {
+  // Workers have no document.
+  scratch ??= typeof document === 'undefined' ? new OffscreenCanvas(1, 1) : document.createElement('canvas');
   // Assigning the size clears the canvas, even when it is unchanged.
   scratch.width = r.width;
   scratch.height = r.height;

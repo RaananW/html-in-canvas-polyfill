@@ -19,7 +19,9 @@
   ],
   "sideEffects": [
     "./dist/auto.js",
-    "./dist/html-in-canvas-polyfill.iife.js"
+    "./dist/worker.js",
+    "./dist/html-in-canvas-polyfill.iife.js",
+    "./dist/html-in-canvas-polyfill.worker.iife.js"
   ],
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -36,13 +38,21 @@
     "./iife": {
       "types": "./dist/types/iife.d.ts",
       "default": "./dist/html-in-canvas-polyfill.iife.js"
+    },
+    "./worker": {
+      "types": "./dist/types/worker.d.ts",
+      "default": "./dist/worker.js"
+    },
+    "./worker/iife": {
+      "default": "./dist/html-in-canvas-polyfill.worker.iife.js"
     }
   },
   "files": [
     "dist",
     "README.md",
     "LICENSE",
-    "docs/LIMITATIONS.md"
+    "docs/LIMITATIONS.md",
+    "docs/WORKERS.md"
   ],
   "publishConfig": {
     "access": "public"

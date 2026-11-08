@@ -19,7 +19,7 @@ const common = {
 await Promise.all([
   build({
     ...common,
-    entryPoints: { index: 'src/index.ts', auto: 'src/auto.ts' },
+    entryPoints: { index: 'src/index.ts', auto: 'src/auto.ts', worker: 'src/worker.ts' },
     format: 'esm',
     splitting: true,
     outdir: 'dist',
@@ -30,5 +30,13 @@ await Promise.all([
     format: 'iife',
     minify: true,
     outfile: 'dist/html-in-canvas-polyfill.iife.js',
+  }),
+  // For classic workers: importScripts('…/html-in-canvas-polyfill.worker.iife.js').
+  build({
+    ...common,
+    entryPoints: ['src/worker.ts'],
+    format: 'iife',
+    minify: true,
+    outfile: 'dist/html-in-canvas-polyfill.worker.iife.js',
   }),
 ]);

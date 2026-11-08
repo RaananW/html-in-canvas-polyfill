@@ -8,7 +8,7 @@ function fakeRecord() {
   const close = vi.fn();
   const bitmap = { close } as unknown as ImageBitmap;
   const record = new SnapshotRecord(
-    { bitmap, width: 100, height: 40, cssWidth: 50, cssHeight: 20, warnings: [] },
+    { bitmap, width: 100, height: 40, cssWidth: 50, cssHeight: 20 },
     2,
     2,
     document.createElement('div'),

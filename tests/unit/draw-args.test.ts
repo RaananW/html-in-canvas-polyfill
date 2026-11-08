@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { parseDrawArgs, toDrawImageArgs } from '../../src/contexts/2d';
+import { parseDrawArgs, toDrawImageArgs } from '../../src/contexts/draw';
 import { SnapshotRecord } from '../../src/snapshot/record';
 
 // 50×20 CSS px element, rasterized at 2 device px per CSS px, canvas grid scale 2.
 const record = new SnapshotRecord(
-  { bitmap: null, width: 100, height: 40, cssWidth: 50, cssHeight: 20, warnings: [] },
+  { bitmap: null, width: 100, height: 40, cssWidth: 50, cssHeight: 20 },
   2,
   2,
   document.createElement('div'),
