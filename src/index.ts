@@ -21,7 +21,11 @@ export {
   type ElementGeometryUpdateEventInit,
 } from './paint/event.js';
 
-export const VERSION = '0.0.0';
+/** Replaced with the package.json version by the build (scripts/build.mjs) and the unit tests. */
+declare const __HIC_VERSION__: string;
+
+/** The polyfill's version, as published in package.json (`0.0.0-dev` when bundled from source without the build). */
+export const VERSION: string = typeof __HIC_VERSION__ === 'string' ? __HIC_VERSION__ : '0.0.0-dev';
 
 export interface InstallOptions {
   /** Install even when the browser supports HTML-in-Canvas natively (testing only). */

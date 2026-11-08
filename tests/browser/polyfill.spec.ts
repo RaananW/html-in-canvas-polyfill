@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { BASIC, load } from './helpers';
 
@@ -121,9 +122,15 @@ test('getElementImageDefaultSize returns grid pixels', async ({ page }) => {
 test('the script build installs and reports status', async ({ page }) => {
   await page.goto('/tests/browser/fixtures/iife.html');
   const status = await page.evaluate(() => {
-    const s = (window as unknown as { HTMLInCanvasPolyfill: { polyfilled: boolean; limitations: string[] } })
+    const s = (window as unknown as { HTMLInCanvasPolyfill: { polyfilled: boolean; limitations: string[]; version: string } })
       .HTMLInCanvasPolyfill;
-    return { polyfilled: s.polyfilled, limitations: s.limitations.length > 0, api: typeof CanvasRenderingContext2D.prototype.drawElementImage };
+    return {
+      polyfilled: s.polyfilled,
+      limitations: s.limitations.length > 0,
+      api: typeof CanvasRenderingContext2D.prototype.drawElementImage,
+      version: s.version,
+    };
   });
-  expect(status).toEqual({ polyfilled: true, limitations: true, api: 'function' });
+  const { version } = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string };
+  expect(status).toEqual({ polyfilled: true, limitations: true, api: 'function', version });
 });
