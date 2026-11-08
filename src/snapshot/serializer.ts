@@ -125,29 +125,27 @@ function getDefaultStyle(src: Element, pseudo: string | null): Map<string, strin
   const appearance = pseudo ? '' : computedStyle(src).appearance;
   const disabled = src.matches(':disabled');
   const nested = LISTS.has(src.localName) && !!src.parentElement?.closest('ul,ol,menu,dir');
-  const key = `${src.localName}[${type}]${pseudo ?? ''}${disabled ? ':disabled' : ''}${nested ? '>' : ''}`;
-  const read = (appearance?: string) => {
-    const doc = getSandboxDoc();
-    const el = doc.createElement(src.localName);
-    if (type) el.setAttribute('type', type);
-    if (disabled) el.setAttribute('disabled', '');
-    if (appearance) (el as HTMLElement).style.appearance = appearance;
-    const parent = nested ? doc.body.appendChild(doc.createElement('ul')) : doc.body;
-    parent.appendChild(el);
-    const style = styleToMap(doc.defaultView!.getComputedStyle(el, pseudo), EMPTY, src instanceof SVGElement);
-    (nested ? parent : el).remove();
+  const key = `${src.localName}[${type}]${pseudo ?? ''}${disabled ? ':' : ''}${nested ? '>' : ''}`;
+  const read = (key: string, appearance = '') => {
+    let style = defaultStyleCache.get(key);
+    if (!style) {
+      const doc = getSandboxDoc();
+      const parent = nested ? doc.body.appendChild(doc.createElement('ul')) : doc.body;
+      const el = parent.appendChild(doc.createElement(src.localName)) as HTMLElement;
+      if (type) el.setAttribute('type', type);
+      el.toggleAttribute('disabled', disabled);
+      el.style.appearance = appearance;
+      style = styleToMap(doc.defaultView!.getComputedStyle(el, pseudo), EMPTY, src instanceof SVGElement);
+      (nested ? parent : el).remove();
+      defaultStyleCache.set(key, style);
+    }
     return style;
   };
-  let cached = defaultStyleCache.get(key);
-  if (!cached) defaultStyleCache.set(key, (cached = read()));
-  const ua = cached.get('appearance');
-  if (!appearance || appearance === ua) return cached;
-  let themed = defaultStyleCache.get(`${key}{${appearance}}`);
-  if (!themed) {
-    themed = read(appearance);
-    themed.set('appearance', ua!);
-    defaultStyleCache.set(`${key}{${appearance}}`, themed);
-  }
+  const plain = read(key);
+  const ua = plain.get('appearance')!;
+  if (!appearance || appearance === ua) return plain;
+  const themed = read(`${key}{${appearance}}`, appearance);
+  themed.set('appearance', ua);
   return themed;
 }
 
