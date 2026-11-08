@@ -3,11 +3,13 @@ import { load } from './helpers';
 
 // Loose performance budgets (median milliseconds) for a Strata-sized panel:
 // about 40 elements with form controls, gradients and web fonts. They catch
-// regressions such as a snapshot per frame, not small slowdowns.
+// regressions such as a snapshot per frame, not small slowdowns. WebKit on the
+// Linux CI runners measured 216–381 ms first and 133–305 ms update across runs of
+// unchanged code, so its budget sits above that noise.
 const BUDGET: Record<string, { first: number; update: number; draw: number }> = {
   native: { first: 100, update: 50, draw: 1 },
   chromium: { first: 300, update: 200, draw: 1 },
-  webkit: { first: 300, update: 200, draw: 1 },
+  webkit: { first: 500, update: 400, draw: 1 },
   firefox: { first: 500, update: 300, draw: 1 },
 };
 
