@@ -5,7 +5,7 @@ export type SnapshotSize = Pick<SnapshotRecord, 'width' | 'height' | 'cssWidth' 
 
 /** A ref-counted snapshot shared by the canvas and any ElementImage. */
 export class SnapshotRecord {
-  private readonly on: ImageBitmap | null;
+  readonly #on: ImageBitmap | null;
   /** The snapshot with its caret hidden, when it has a caret. */
   readonly caretOff: ImageBitmap | null;
   /** The blink phase: true while the caret is hidden. */
@@ -19,7 +19,7 @@ export class SnapshotRecord {
   /** Unrounded border-box size in canvas grid pixels. */
   readonly defaultWidth: number;
   readonly defaultHeight: number;
-  private refs = 1;
+  #refs = 1;
 
   constructor(
     result: Pick<SnapshotResult, 'bitmap' | 'caretOff' | 'width' | 'height' | 'cssWidth' | 'cssHeight'>,
@@ -28,7 +28,7 @@ export class SnapshotRecord {
     /** The element the snapshot was taken of; null when it came from another thread. */
     readonly element: Element | null,
   ) {
-    this.on = result.bitmap;
+    this.#on = result.bitmap;
     this.caretOff = result.caretOff ?? null;
     this.width = result.width;
     this.height = result.height;
@@ -40,17 +40,17 @@ export class SnapshotRecord {
 
   /** The bitmap to draw in the current blink phase. */
   get bitmap(): ImageBitmap | null {
-    return this.caretHidden && this.caretOff ? this.caretOff : this.on;
+    return this.caretHidden && this.caretOff ? this.caretOff : this.#on;
   }
 
   retain(): this {
-    this.refs++;
+    this.#refs++;
     return this;
   }
 
   release(): void {
-    if (--this.refs === 0) {
-      this.on?.close();
+    if (--this.#refs === 0) {
+      this.#on?.close();
       this.caretOff?.close();
     }
   }

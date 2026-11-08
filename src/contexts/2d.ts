@@ -2,10 +2,11 @@ import { invalidState, isElement } from '../dom.js';
 import { ElementImage, elementImageRecord, imageRecordFor } from '../element-image.js';
 import { drawMatrix, gridToCanvas } from '../geometry/matrix.js';
 import { placeholderOf, queueOffscreenGeometry } from '../geometry/offscreen.js';
-import { nearestState } from '../host/canvas-state.js';
+import { type CanvasState, nearestState } from '../host/canvas-state.js';
 import { getState } from '../runtime.js';
 import type { SnapshotRecord } from '../snapshot/record.js';
 import { type Ctx2D, drawOptions, drawRecord, notSource, parseDrawArgs } from './draw.js';
+import { gpuFail } from './webgpu.js';
 
 
 /** Resolves the snapshot to draw, throwing the errors the spec requires. */
@@ -22,6 +23,11 @@ export function recordFor(canvas: unknown, source: unknown): SnapshotRecord {
   if (!state || state.canvas !== canvas) {
     throw invalidState('The element can only be drawn into its nearest ancestor <canvas>.');
   }
+  return committed(state, source);
+}
+
+/** The committed snapshot of `source`, a drawable of `state`. */
+function committed(state: CanvasState, source: Element): SnapshotRecord {
   if (!state.isDrawable(source)) throw invalidState('The element does not have the drawable attribute.');
   const record = state.snapshots.get(source);
   if (!record) throw invalidState('No cached paint record for element.');
@@ -34,9 +40,6 @@ function canvasOf(canvas: unknown): HTMLCanvasElement | undefined {
   return typeof OffscreenCanvas !== 'undefined' && canvas instanceof OffscreenCanvas ? placeholderOf(canvas) : undefined;
 }
 
-const gpuFail = (message: string) =>
-  new TypeError(`Failed to execute 'drawElementImageToTexture' on 'GPUQueue': ${message}`);
-
 /** Unlike 2D and WebGL, WebGPU accepts an element of any drawable canvas. */
 export function gpuRecordFor(_queue: unknown, source: unknown): SnapshotRecord {
   if (source instanceof ElementImage) return elementImageRecord(source);
@@ -47,10 +50,7 @@ export function gpuRecordFor(_queue: unknown, source: unknown): SnapshotRecord {
     throw invalidState('No cached paint record for element.');
   }
   if (!state) throw gpuFail('Only children of a <canvas content=drawable> can be drawn.');
-  if (!state.isDrawable(source)) throw invalidState('The element does not have the drawable attribute.');
-  const record = state.snapshots.get(source);
-  if (!record) throw invalidState('No cached paint record for element.');
-  return record;
+  return committed(state, source);
 }
 
 export function drawElementImage(this: Ctx2D, source: unknown, ...args: unknown[]): void {

@@ -28,8 +28,6 @@ export interface SnapshotOptions {
   isBoundary?: (el: Element) => boolean;
   /** Declarations appended to the root, restoring authored values the polyfill overrides. */
   rootStyle?: Array<[string, string]>;
-  /** Keep the SVG markup on the result (debugging only). */
-  keepSvg?: boolean;
   /** Reuse styles read by earlier snapshots of the same element (docs/INCREMENTAL.md). */
   styles?: { cache: StyleCache; fresh: (el: Element) => boolean };
 }
@@ -133,7 +131,7 @@ let layoutNames: string[] | null = null;
 
 /** Styles kept between snapshots, per element and pseudo-element. */
 export class StyleCache {
-  private readonly entries = new WeakMap<Element, Map<string, StyleEntry>>();
+  readonly #entries = new WeakMap<Element, Map<string, StyleEntry>>();
   /** Elements read in full, and reused, by the last snapshot. */
   read = 0;
   reused = 0;
@@ -145,18 +143,18 @@ export class StyleCache {
   customProps: ReadonlySet<string> = EMPTY;
 
   get(el: Element, pseudo: string | null): StyleEntry | undefined {
-    return this.entries.get(el)?.get(pseudo ?? '');
+    return this.#entries.get(el)?.get(pseudo ?? '');
   }
 
   set(el: Element, pseudo: string | null, entry: StyleEntry): void {
-    let byPseudo = this.entries.get(el);
-    if (!byPseudo) this.entries.set(el, (byPseudo = new Map()));
+    let byPseudo = this.#entries.get(el);
+    if (!byPseudo) this.#entries.set(el, (byPseudo = new Map()));
     byPseudo.set(pseudo ?? '', entry);
   }
 
   /** Drops what's kept for `el` (its pseudo-elements included). */
   delete(el: Element): void {
-    this.entries.delete(el);
+    this.#entries.delete(el);
   }
 
   /**
@@ -188,8 +186,6 @@ export interface SnapshotResult {
   /** Border-box size in CSS pixels. */
   cssWidth: number;
   cssHeight: number;
-  svg?: string;
-  warnings: string[];
 }
 
 const XHTML_NS = 'http://www.w3.org/1999/xhtml';
@@ -371,14 +367,12 @@ function inlineUrl(url: string): Promise<string | null> {
 
 const URL_RE = /url\((['"]?)([^'")]+)\1\)/g;
 
-async function inlineCssUrls(value: string, base: string, warnings: string[]): Promise<string> {
+async function inlineCssUrls(value: string, base: string): Promise<string> {
   const matches = [...value.matchAll(URL_RE)];
   if (matches.length === 0) return value;
   const replacements = await Promise.all(
     matches.map(async (m) => {
-      const abs = new URL(m[2]!, base).href;
-      const data = await inlineUrl(abs);
-      if (!data) warnings.push(`could not inline ${abs}`);
+      const data = await inlineUrl(new URL(m[2]!, base).href);
       return `url("${data ?? TRANSPARENT_PIXEL}")`;
     }),
   );
@@ -394,7 +388,6 @@ interface CloneContext {
   customProps: ReadonlySet<string>;
   pseudoRules: string[];
   families: Set<string>;
-  warnings: string[];
   root: Element;
   sel: SelectionState;
   /** Markup drawn over the root (text-control carets and selections). */
@@ -514,7 +507,7 @@ function applyDeclarations(
       decls.map(
         async ([n, v]): Promise<[string, string]> => [
           n,
-          v.includes('url(') ? await inlineCssUrls(v, document.baseURI, ctx.warnings) : v,
+          v.includes('url(') ? await inlineCssUrls(v, document.baseURI) : v,
         ],
       ),
     ).then((resolved) => apply(toCss(resolved))),
@@ -640,7 +633,7 @@ function cloneNode(
     try {
       clone.setAttribute('src', el.toDataURL());
     } catch {
-      ctx.warnings.push('tainted <canvas> child skipped');
+      // A tainted canvas can't be read, so it's left out.
     }
   } else {
     clone = el.cloneNode(false) as Element;
@@ -698,10 +691,7 @@ function cloneNode(
     clone.removeAttribute('loading');
     if (url) {
       ctx.pending.push(
-        inlineUrl(url).then((data) => {
-          if (!data) ctx.warnings.push(`could not inline <img> ${url}`);
-          clone.setAttribute('src', data ?? TRANSPARENT_PIXEL);
-        }),
+        inlineUrl(url).then((data) => clone.setAttribute('src', data ?? TRANSPARENT_PIXEL)),
       );
     }
   }
@@ -762,14 +752,14 @@ const VAR_RE = /var\(\s*(--[\w-]+)/g;
  * attributes survive cloning, so those rules still match in the snapshot as
  * long as they do not depend on ancestors outside `root`.
  */
-function scanSheets(root: Element, warnings: string[]): SheetScan {
+function scanSheets(root: Element): SheetScan {
   const scan: SheetScan = { fontFaces: [], pseudoRules: [], customProps: new Set() };
   for (const sheet of Array.from(document.styleSheets)) {
     let cssRules: CSSRuleList;
     try {
       cssRules = sheet.cssRules;
     } catch {
-      warnings.push(`cross-origin stylesheet skipped: ${sheet.href}`);
+      // A cross-origin stylesheet can't be read.
       continue;
     }
     const base = sheet.href ?? document.baseURI;
@@ -797,10 +787,10 @@ function scanSheets(root: Element, warnings: string[]): SheetScan {
   return scan;
 }
 
-function sheetCss(scan: SheetScan, families: Set<string>, warnings: string[]): Promise<string[]> {
+function sheetCss(scan: SheetScan, families: Set<string>): Promise<string[]> {
   return Promise.all([
-    ...scan.fontFaces.filter((f) => families.has(f.family)).map((f) => inlineCssUrls(f.cssText, f.base, warnings)),
-    ...scan.pseudoRules.map((r) => inlineCssUrls(r.cssText, r.base, warnings)),
+    ...scan.fontFaces.filter((f) => families.has(f.family)).map((f) => inlineCssUrls(f.cssText, f.base)),
+    ...scan.pseudoRules.map((r) => inlineCssUrls(r.cssText, r.base)),
   ]);
 }
 
@@ -814,10 +804,9 @@ export async function snapshot(el: Element, opts: SnapshotOptions): Promise<Snap
   const cssHeight = he.offsetHeight ?? 0;
   const width = Math.round(cssWidth * opts.scaleX);
   const height = Math.round(cssHeight * opts.scaleY);
-  const warnings: string[] = [];
-  if (width <= 0 || height <= 0) return { bitmap: null, width: 0, height: 0, cssWidth, cssHeight, warnings };
+  if (width <= 0 || height <= 0) return { bitmap: null, width: 0, height: 0, cssWidth, cssHeight };
 
-  const scan = scanSheets(el, warnings);
+  const scan = scanSheets(el);
   if (opts.styles) opts.styles.cache.customProps = scan.customProps;
   const ctx: CloneContext = {
     isBoundary: opts.isBoundary,
@@ -827,13 +816,12 @@ export async function snapshot(el: Element, opts: SnapshotOptions): Promise<Snap
     customProps: scan.customProps,
     pseudoRules: [],
     families: new Set(),
-    warnings,
     root: el,
     sel: readSelection(),
     overlays: [],
   };
   const clone = cloneNode(el, null, ctx, true) as Element;
-  const sheetRules = sheetCss(scan, ctx.families, warnings);
+  const sheetRules = sheetCss(scan, ctx.families);
   await Promise.all(ctx.pending);
   const css = `${(await sheetRules).join('\n')}\n${ctx.pseudoRules.join('\n')}`;
 
@@ -856,5 +844,5 @@ export async function snapshot(el: Element, opts: SnapshotOptions): Promise<Snap
   const caret = ctx.sel.caretColor;
   const svg = svgFor(caret ?? 'transparent');
   const [bitmap, caretOff] = await Promise.all([render(svg), caret ? render(svgFor('transparent')) : null]);
-  return { bitmap, caretOff, width, height, cssWidth, cssHeight, svg: opts.keepSvg ? svg : undefined, warnings };
+  return { bitmap, caretOff, width, height, cssWidth, cssHeight };
 }

@@ -4,6 +4,19 @@ All notable changes to `@underglass/html-in-canvas-polyfill`. The polyfill
 does nothing in browsers with native HTML-in-Canvas support, so these changes
 only affect browsers without it.
 
+## Unreleased
+
+### Changed
+
+- **Smaller.** The main entry is 22.58 KB min+gzip, down from 23.46 KB, and
+  the worker entry 3.43 KB, down from 3.69 KB. Nothing it does changed:
+  - the build targets ES2022, which the polyfill already needed at run time
+    (`Object.hasOwn`), so class fields are no longer rewritten into helper
+    calls;
+  - internal class members are `#private`, so minifiers shorten their names;
+  - snapshot warnings nothing read, and duplicated code (error messages,
+    selection helpers, message walkers), are gone.
+
 ## 0.4.0 (2026-11-08)
 
 ### Changed

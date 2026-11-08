@@ -132,11 +132,7 @@ export function stateSignature(el: Element, rules = pageRules(el.ownerDocument))
 }
 
 export function sameSignature(a: Signature, b: Signature): boolean {
-  if (!a || !b || a.length !== b.length) return false;
-  return a.every((list, i) => {
-    const other = b[i]!;
-    return list.length === other.length && list.every((e, j) => e === other[j]);
-  });
+  return changedMatches(a, b)?.size === 0;
 }
 
 /**

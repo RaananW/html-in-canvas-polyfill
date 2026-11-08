@@ -2,7 +2,7 @@ import type { GPUDrawElementImageDestination, GPUDrawElementImageSource } from '
 import type { Resolve } from './draw.js';
 import { allOrNone, isDirectCopy, rasterize, uploadRegion } from './upload.js';
 
-const fail = (message: string) =>
+export const gpuFail = (message: string): TypeError =>
   new TypeError(`Failed to execute 'drawElementImageToTexture' on 'GPUQueue': ${message}`);
 
 function extent(size: GPUExtent3D | undefined): [number | undefined, number | undefined] {
@@ -22,9 +22,9 @@ export function drawElementImageToTextureWith(resolve: Resolve) {
     source: GPUDrawElementImageSource,
     destination: GPUDrawElementImageDestination,
   ): void {
-    if (typeof source !== 'object' || source === null) throw fail("parameter 1 is not of type 'GPUDrawElementImageSource'.");
+    if (typeof source !== 'object' || source === null) throw gpuFail("parameter 1 is not of type 'GPUDrawElementImageSource'.");
     if (typeof destination !== 'object' || destination === null) {
-      throw fail("parameter 2 is not of type 'GPUDrawElementImageDestination'.");
+      throw gpuFail("parameter 2 is not of type 'GPUDrawElementImageDestination'.");
     }
     const record = resolve(this, source.source);
     const { sourceX, sourceY, sourceWidth, sourceHeight } = source;

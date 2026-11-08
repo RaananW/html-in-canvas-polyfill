@@ -24,25 +24,30 @@ export interface SelectionState {
   caretColor: string | null;
 }
 
-function deepActiveElement(): Element | null {
+export function deepActiveElement(): Element | null {
   let active = document.activeElement;
   while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
   return active;
+}
+
+/** `el` when it's a text control with a selection (or caret) of its own. */
+export function textControl(el: Element | null): HTMLInputElement | HTMLTextAreaElement | null {
+  return (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && el.selectionStart !== null ? el : null;
+}
+
+/** The first range of the document selection. */
+export function selectionRange(): Range | null {
+  const sel = getSelection();
+  return sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
 }
 
 export function readSelection(): SelectionState {
   const state: SelectionState = { range: null, caret: null, control: null, caretColor: null };
   const focused = document.hasFocus();
   const active = deepActiveElement();
-  if (
-    (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) &&
-    active.selectionStart !== null &&
-    (focused || active.selectionStart !== active.selectionEnd)
-  ) {
-    state.control = active;
-  }
-  const sel = getSelection();
-  const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+  const control = textControl(active);
+  if (control && (focused || control.selectionStart !== control.selectionEnd)) state.control = control;
+  const range = selectionRange();
   if (range && !range.collapsed) state.range = range;
   else if (range && focused && active instanceof HTMLElement && active.isContentEditable && active.contains(range.startContainer)) {
     state.caret = { node: range.startContainer, offset: range.startOffset };
@@ -66,12 +71,16 @@ function caretSpan(parent: Element, state: SelectionState): Node | null {
   return span;
 }
 
+/** The `::selection` background of `el`, or the UA default. */
+function highlight(el: Element): string {
+  const bg = computedStyle(el, '::selection').backgroundColor;
+  return bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent' ? 'Highlight' : bg;
+}
+
 /** The highlight style for selected text in `parent`: `::selection` colors, or the UA default. */
 function selectionStyle(parent: Element): string {
-  const sel = computedStyle(parent, '::selection');
-  const bg = sel.backgroundColor;
-  const fg = sel.color !== computedStyle(parent).color ? `;color:${sel.color}` : '';
-  return `background-color:${bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent' ? 'Highlight' : bg}${fg}`;
+  const color = computedStyle(parent, '::selection').color;
+  return `background-color:${highlight(parent)}${color !== computedStyle(parent).color ? `;color:${color}` : ''}`;
 }
 
 /**
@@ -248,8 +257,7 @@ export function controlOverlay(el: HTMLInputElement | HTMLTextAreaElement, root:
       out = box(r, 1, `background:var(${CARET_VAR})`);
     }
   } else {
-    const sel = computedStyle(el, '::selection').backgroundColor;
-    const bg = sel === 'rgba(0, 0, 0, 0)' || sel === 'transparent' ? 'Highlight' : sel;
+    const bg = highlight(el);
     // Multiply keeps dark text dark, like a highlight painted behind it.
     for (const r of rects(start, end)) out += box(r, r.width, `background:${bg};mix-blend-mode:multiply`);
   }
