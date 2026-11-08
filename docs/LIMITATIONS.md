@@ -14,13 +14,14 @@ then does nothing.
 | `paint` event, `onpaint`, `CanvasPaintEvent.changedElements` | Full, fired in reverse tree order (native Chromium 156 uses tree order). |
 | `requestPaint()` | Full. |
 | `CanvasRenderingContext2D.drawElementImage` (all overloads) | Full. Returns `undefined`, as in the spec (native Chromium returns a `DOMMatrix`). Updates the element's geometry from the context transform and destination rectangle unless `preserveElementGeometry` is set. |
-| `captureElementImage()`, `ElementImage` | Full on the main thread. `ElementImage` can't be transferred to workers. |
+| `captureElementImage()`, `ElementImage` | Full. Transferable to workers, ports and windows with `postMessage` and `structuredClone`, but a worker has to import the polyfill's worker entry (see [Workers](#workers)). Cloning without a transfer list throws `DataCloneError`, as natively. `width` and `height` are kept; Chrome Canary 159 and the explainer have dropped them. |
 | `getElementImageDefaultSize()` | Full (not yet shipped in native Chromium 156). |
-| `OffscreenCanvasRenderingContext2D.drawElementImage` | `ElementImage` sources only. Automatic geometry works for canvases transferred with `transferControlToOffscreen()` on the main thread. |
+| `OffscreenCanvasRenderingContext2D.drawElementImage` | `ElementImage` sources only, on the main thread and in workers with the worker entry. Automatic geometry works for canvases transferred with `transferControlToOffscreen()` on the main thread, not yet from a worker. |
 | `updateElementGeometry`, `clearElementGeometry`, `getElementTransform` | Full on `HTMLCanvasElement`, following the explainer (see [Element geometry](#element-geometry)). |
-| `OffscreenCanvas.updateElementGeometry` / `clearElementGeometry`, `elementgeometryupdate`, `ElementGeometryUpdateEvent` | Main thread only. Updates are batched in a microtask, then announced on the placeholder canvas. Calls from a worker do nothing. |
-| `WebGLRenderingContext` / `WebGL2RenderingContext` `.texElementSubImage2D` | Main thread. RGBA/UNSIGNED_BYTE uploads only (see [WebGL and WebGPU](#webgl-and-webgpu)). |
-| `GPUQueue.drawElementImageToTexture` | Main thread. Full otherwise, including source rectangles, `size`, `premultipliedAlpha`, and color formats that `copyExternalImageToTexture` accepts. |
+| `OffscreenCanvas.updateElementGeometry` / `clearElementGeometry`, `elementgeometryupdate`, `ElementGeometryUpdateEvent` | Main thread only. Updates are batched in a microtask, then announced on the placeholder canvas. Calls from a worker check their argument and do nothing; natively (Canary 159) they move the element's hit region. |
+| `OffscreenCanvas.getElementImageDefaultSize` | Full, in workers too (Canary 159 has it; Chromium 156 doesn't). |
+| `WebGLRenderingContext` / `WebGL2RenderingContext` `.texElementSubImage2D` | Main thread and workers with the worker entry. RGBA/UNSIGNED_BYTE uploads only (see [WebGL and WebGPU](#webgl-and-webgpu)). |
+| `GPUQueue.drawElementImageToTexture` | Main thread and workers with the worker entry. Full otherwise, including source rectangles, `size`, `premultipliedAlpha`, and color formats that `copyExternalImageToTexture` accepts. |
 | Legacy `texElementImage2D`, `GPUQueue.copyElementImageToTexture` | Not provided. Native Chromium 156 has them with shapes that differ from the explainer. |
 
 ## How content is laid out
@@ -133,10 +134,80 @@ Chromium.
   native Chromium, it accepts elements of any drawable canvas.
 - Scaled or cropped uploads are resampled on a 2D canvas first, so they're
   filtered the same way `drawImage` filters them.
-- `ElementImage` can't be transferred to workers, so uploads from a worker
-  aren't possible.
+- Uploads work in a worker that imports the worker entry, from an
+  `ElementImage` transferred to it (see [Workers](#workers)).
 - When snapshots taint canvases (see `getStatus().limitations`), uploads throw
-  `SecurityError`.
+  `SecurityError`. Such a snapshot can't reach a worker at all: browsers
+  refuse to clone or transfer a non-origin-clean `ImageBitmap`, so posting it
+  throws `DataCloneError` on the sending side.
+
+## Workers
+
+Natively, an `ElementImage` is `[Transferable]`: post it with
+`postMessage(message, [image])` and the worker can draw it into an
+`OffscreenCanvas` or upload it with WebGL or WebGPU, with no code of its own.
+The polyfill's `ElementImage` is a script object, so the worker needs the
+polyfill too:
+
+```js
+// worker.js (module worker)
+import '@underglass/html-in-canvas-polyfill/worker';
+// classic worker: importScripts('…/html-in-canvas-polyfill.worker.iife.js');
+```
+
+The worker entry revives received images and installs `drawElementImage` on
+`OffscreenCanvasRenderingContext2D`, `texElementSubImage2D` on WebGL
+contexts, `drawElementImageToTexture` on `GPUQueue`, and
+`getElementImageDefaultSize` on `OffscreenCanvas`. It does nothing in a worker
+with native support.
+
+How it works: the main entry (and the worker entry) wrap `postMessage` on
+`Worker`, `MessagePort`, `ServiceWorker`, `Client`, the window and the worker
+global, and `structuredClone`. When the transfer list contains an
+`ElementImage`, each one in the message is replaced by a plain *envelope*
+that carries a clone of its snapshot bitmap and its sizes, and the source is
+closed, as a native transfer detaches it. On the receiving side,
+`MessageEvent.data` turns envelopes back into `ElementImage`s. Messages whose
+transfer list has no `ElementImage` are passed through untouched, and are
+not walked when received.
+
+As natively:
+
+- An `ElementImage` that isn't in the transfer list makes the post throw
+  `DataCloneError`, and so does a closed or duplicated one. The image stays
+  open.
+- A transferred image is closed: drawing it throws `InvalidStateError`.
+- Images arrive in objects, arrays, Maps and Sets at any depth, and an image
+  that appears twice arrives as one object.
+- Paths that clone without a transfer list throw `DataCloneError`, natively
+  too: `BroadcastChannel` and `history.pushState` (tested), and IndexedDB,
+  which uses the same structured clone.
+- An `ElementImage` is a snapshot from capture time; the caret doesn't blink
+  in it.
+
+Differences:
+
+- A worker without the worker entry receives the envelope instead: a plain
+  object `{ __hicElementImage: 1, bitmap, width, height, cssWidth,
+  cssHeight, defaultWidth, defaultHeight }` with an `ImageBitmap` it can draw
+  with `drawImage`, and the top-level message object gains
+  `__hicElementImage: 2`. It has no `close()`.
+- Native Chromium only draws an `ElementImage` into the canvas it was
+  captured from (or the `OffscreenCanvas` transferred from it), and WebGPU
+  uploads need that canvas to have a rendering context. The polyfill doesn't
+  check either, in workers or on the main thread.
+- Geometry from a worker doesn't reach the main thread yet:
+  `updateElementGeometry`, `clearElementGeometry` and the automatic geometry of
+  `drawElementImage` in a worker do nothing. Set geometry on the main thread
+  with `canvas.updateElementGeometry`, as Underglass does. See
+  [WORKERS.md](WORKERS.md#phase-2-geometry-from-a-worker) for the plan.
+- A transfer copies the snapshot. Natively it moves it. Posting eight
+  400×300 snapshots blocks the sender for about 9 ms in Chromium, 1 ms in
+  Firefox and 1–2 ms in WebKit.
+- `window.postMessage` to a frame, and `ServiceWorker`/`Client` messages, revive
+  images only where the polyfill is installed.
+- `ReadableStream`/`WritableStream` chunks and other transfer paths that don't
+  go through `postMessage` or `structuredClone` aren't covered.
 
 ## Snapshots
 

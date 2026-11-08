@@ -57,6 +57,23 @@ testing.
 </script>
 ```
 
+An `ElementImage` from `captureElementImage()` can be transferred to a worker
+with `postMessage(message, [image])`, as natively. The worker needs the
+polyfill's worker entry to receive it and to draw or upload it; it does
+nothing where the browser supports the API natively:
+
+```js
+// In a module worker. Classic workers: importScripts('…/html-in-canvas-polyfill.worker.iife.js').
+import '@underglass/html-in-canvas-polyfill/worker';
+
+self.onmessage = ({ data }) => {
+  ctx.drawElementImage(data.image, 0, 0); // ctx: the 2D context of a transferred OffscreenCanvas
+};
+```
+
+See [docs/WORKERS.md](docs/WORKERS.md) and the
+[Workers section of the limitations](docs/LIMITATIONS.md#workers).
+
 The polyfill moves canvas children into a sibling host element. If a
 framework renders those children, render them into
 `<div data-hic-host>` right after the canvas instead. See

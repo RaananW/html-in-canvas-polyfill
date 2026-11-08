@@ -39,7 +39,7 @@ sized to the canvas content box. There are two modes:
 | `paint` event + `changedElements` | dirty tracking: MutationObserver, ResizeObserver, input/change/focus/scroll, transition/animation run→end (continuous), `document.fonts`, image load. Re-snapshot dirty elements, then dispatch `CanvasPaintEvent` in rAF when the bitmaps are ready. Reverse tree order. |
 | `requestPaint()` | force paint in next rAF |
 | `drawElementImage` (3 overloads) | `drawImage(bitmap, …)` scaled by DPR. Throws before the first snapshot, matching native behavior. Auto `updateElementGeometry` from `ctx.getTransform()` × dest rect unless `preserveElementGeometry` is set. |
-| `captureElementImage` / `ElementImage` | wrapper over `ImageBitmap`; `close()` releases it. Worker transfer only via an exposed bitmap helper. |
+| `captureElementImage` / `ElementImage` | wrapper over `ImageBitmap`; `close()` releases it. Transfer: wrapped `postMessage`/`structuredClone` send an envelope with a bitmap clone, and `MessageEvent.data` revives it; workers import the `./worker` entry (see [WORKERS.md](WORKERS.md)). |
 | `texElementSubImage2D` | `texSubImage2D(target, level, x, y, RGBA, UNSIGNED_BYTE, canvas)`; the snapshot is drawn into a 2D canvas first, because WebGL ignores `UNPACK_*` flags for `ImageBitmap` sources |
 | `drawElementImageToTexture` | `queue.copyExternalImageToTexture({source: bitmap, origin}, dest, size)`; cropped or scaled uploads go through a 2D canvas |
 | `updateElementGeometry` / `clear` / `getElementTransform` | store matrix; apply CSS transform (canvas CSS-px scale × matrix) and `clip-path`; `preserveHitTestOrder` → z-index stack |
