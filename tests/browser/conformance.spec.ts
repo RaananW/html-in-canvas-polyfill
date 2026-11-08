@@ -51,6 +51,22 @@ test('fires paint and draws grid-sized snapshots', async ({ page }) => {
   expect(result.image).toEqual([100, 40]);
 });
 
+// Libraries skip elements that checkVisibility reports hidden (Underglass's
+// Strata draws no relief for them): drawn children must stay visible to it.
+test('drawn children stay visible to checkVisibility', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    document.body.innerHTML = `
+      <canvas id="c" width="400" height="200" content="drawable">
+        <div id="a" drawable style="width:50px;height:20px"><span id="inner">text</span><span id="faded" style="opacity:0">x</span></div>
+      </canvas>`;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    await new Promise((r) => c.addEventListener('paint', r, { once: true }));
+    const check = (id: string) => document.getElementById(id)!.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+    return { a: check('a'), inner: check('inner'), faded: check('faded') };
+  });
+  expect(result).toEqual({ a: true, inner: true, faded: false });
+});
+
 test('maps source rectangles in CSS pixels', async ({ page }) => {
   const result = await page.evaluate(async () => {
     document.body.innerHTML = `

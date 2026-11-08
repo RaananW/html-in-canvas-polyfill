@@ -334,7 +334,10 @@ export class CanvasState {
     set('margin', '0px');
     set('padding', '0px');
     set('border', 'none');
-    set('opacity', '0');
+    // Invisible but still hit-tested. `filter`, not `opacity: 0`: natively the
+    // children are visible to `checkVisibility({ opacityProperty: true })`,
+    // and an `opacity: 0` ancestor would make every one of them report hidden.
+    set('filter', 'opacity(0)');
     set('pointer-events', 'none');
     set('overflow', 'clip');
     set('display', 'block');
