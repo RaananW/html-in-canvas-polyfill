@@ -152,7 +152,7 @@ const fmt = (v: number) => String(Object.is(v, -0) ? 0 : v);
  *
  * - With `transform` free, the locked individual properties are divided out of it.
  * - With `transform` locked, `x` must be expressed by `translate`, `rotate` and
- *   `scale`, which is exact when it has no skew or perspective after dividing the
+ *   `scale`, which is exact for 2D geometry without skew after dividing the
  *   locked transform out.
  *
  * Null when `x` can't be expressed exactly; the element must then not be hit.
@@ -171,88 +171,18 @@ export function overlayTransform(x: DOMMatrixReadOnly, locked: LockedTransform =
     return isFiniteMatrix(t) ? `transform:${cssMatrix(t)}!important;${free}` : null;
   }
   if (locked.translate || locked.rotate || locked.scale) return null;
+  // translate · rotate · scale about z: any 2D geometry without skew.
   const p = n.multiply(locked.transform.inverse());
-  if (!isFiniteMatrix(p) || p.m14 !== 0 || p.m24 !== 0 || p.m34 !== 0 || p.m44 !== 1) return null;
-  const columns = [
-    [p.m11, p.m12, p.m13],
-    [p.m21, p.m22, p.m23],
-    [p.m31, p.m32, p.m33],
-  ];
-  const s = columns.map((c) => Math.hypot(c[0]!, c[1]!, c[2]!));
-  if (s.some((v) => !(v > 1e-12))) return null;
-  const r = columns.map((c, i) => c.map((v) => v / s[i]!));
-  const [r0, r1, r2] = r as [number[], number[], number[]];
-  // A reflection goes into the x scale, so the rest is a rotation.
-  const det =
-    r0[0]! * (r1[1]! * r2[2]! - r1[2]! * r2[1]!) -
-    r1[0]! * (r0[1]! * r2[2]! - r0[2]! * r2[1]!) +
-    r2[0]! * (r0[1]! * r1[2]! - r0[2]! * r1[1]!);
-  if (det < 0) {
-    s[0] = -s[0]!;
-    r[0] = r0.map((v) => -v);
-  }
-  const rotate = rotateValue(r as [number[], number[], number[]]);
-  const declarations =
-    `translate:${fmt(p.m41)}px ${fmt(p.m42)}px ${fmt(p.m43)}px!important;` +
-    `rotate:${rotate}!important;scale:${s.map(fmt).join(' ')}!important;`;
+  const sy = Math.hypot(p.c, p.d);
+  // A reflection goes into the x scale.
+  const sx = Math.hypot(p.a, p.b) * (p.a * p.d - p.b * p.c < 0 ? -1 : 1);
+  if (!(sy > 1e-12) || !(Math.abs(sx) > 1e-12)) return null;
+  const angle = (Math.atan2(p.b / sx, p.a / sx) * 180) / Math.PI;
   // Rebuild what the browser will compute and require it to match.
-  const rebuilt = new DOMMatrix()
-    .translate(p.m41, p.m42, p.m43)
-    .multiply(rotate === 'none' ? new DOMMatrix() : rotationOf(rotate))
-    .scale(s[0], s[1], s[2]);
   const want = p.toFloat64Array();
-  const got = rebuilt.toFloat64Array();
-  return want.every((v, i) => Math.abs(v - got[i]!) <= 1e-6 * Math.max(1, Math.abs(v))) ? declarations : null;
-}
-
-/** A CSS `rotate` value for an orthonormal, right-handed matrix given as columns. */
-function rotateValue([c0, c1, c2]: [number[], number[], number[]]): string {
-  const deg = (rad: number) => (rad * 180) / Math.PI;
-  // About z only: a plain 2D angle.
-  if (Math.abs(c0[2]!) < 1e-12 && Math.abs(c1[2]!) < 1e-12 && Math.abs(c2[0]!) < 1e-12 && Math.abs(c2[1]!) < 1e-12 && c2[2]! > 0) {
-    const angle = deg(Math.atan2(c0[1]!, c0[0]!));
-    return angle === 0 ? 'none' : `${fmt(angle)}deg`;
-  }
-  // Axis and angle through the quaternion, which stays stable near 180°.
-  const m = (row: number, col: number) => [c0, c1, c2][col]![row]!;
-  const trace = m(0, 0) + m(1, 1) + m(2, 2);
-  let w: number, x: number, y: number, z: number;
-  if (trace > 0) {
-    const k = Math.sqrt(trace + 1) * 2;
-    w = k / 4;
-    x = (m(2, 1) - m(1, 2)) / k;
-    y = (m(0, 2) - m(2, 0)) / k;
-    z = (m(1, 0) - m(0, 1)) / k;
-  } else if (m(0, 0) > m(1, 1) && m(0, 0) > m(2, 2)) {
-    const k = Math.sqrt(1 + m(0, 0) - m(1, 1) - m(2, 2)) * 2;
-    w = (m(2, 1) - m(1, 2)) / k;
-    x = k / 4;
-    y = (m(0, 1) + m(1, 0)) / k;
-    z = (m(0, 2) + m(2, 0)) / k;
-  } else if (m(1, 1) > m(2, 2)) {
-    const k = Math.sqrt(1 + m(1, 1) - m(0, 0) - m(2, 2)) * 2;
-    w = (m(0, 2) - m(2, 0)) / k;
-    x = (m(0, 1) + m(1, 0)) / k;
-    y = k / 4;
-    z = (m(1, 2) + m(2, 1)) / k;
-  } else {
-    const k = Math.sqrt(1 + m(2, 2) - m(0, 0) - m(1, 1)) * 2;
-    w = (m(1, 0) - m(0, 1)) / k;
-    x = (m(0, 2) + m(2, 0)) / k;
-    y = (m(1, 2) + m(2, 1)) / k;
-    z = k / 4;
-  }
-  const length = Math.hypot(x, y, z);
-  if (length < 1e-12) return 'none';
-  const angle = deg(2 * Math.atan2(length, w));
-  return `${fmt(x / length)} ${fmt(y / length)} ${fmt(z / length)} ${fmt(angle)}deg`;
-}
-
-/** The matrix of a `rotate` value written by `rotateValue`. */
-function rotationOf(value: string): DOMMatrix {
-  const parts = value.split(' ').map(parseFloat);
-  if (parts.length === 1) return new DOMMatrix().rotateAxisAngle(0, 0, 1, parts[0]);
-  return new DOMMatrix().rotateAxisAngle(parts[0], parts[1], parts[2], parts[3]);
+  const got = new DOMMatrix().translate(p.e, p.f).rotate(angle).scale(sx, sy).toFloat64Array();
+  if (!want.every((v, i) => Math.abs(v - got[i]!) <= 1e-6 * Math.max(1, Math.abs(v)))) return null;
+  return `translate:${fmt(p.e)}px ${fmt(p.f)}px!important;rotate:${fmt(angle)}deg!important;scale:${fmt(sx)} ${fmt(sy)}!important;`;
 }
 
 /** `polygon()` for a clip rectangle in the element's border-box coordinates. */

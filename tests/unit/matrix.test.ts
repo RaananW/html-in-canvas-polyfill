@@ -90,8 +90,7 @@ describe('overlayTransform', () => {
     for (const x of [
       new DOMMatrix().translate(228, 86),
       new DOMMatrix().translate(10, 20).rotate(45).scale(2, 3),
-      new DOMMatrix().translate(5, 6, 7).rotateAxisAngle(1, 2, 3, 70).scale(1.5, 0.5, 2),
-      new DOMMatrix().rotateAxisAngle(0, 1, 0, 180),
+      new DOMMatrix().translate(-3.5, 9).rotate(-120).scale(0.25),
       new DOMMatrix().rotate(180),
       new DOMMatrix().scale(-1, 1),
     ]) {
@@ -123,7 +122,11 @@ describe('overlayTransform', () => {
     const perspective = new DOMMatrix();
     perspective.m34 = -0.002;
     expect(overlayTransform(perspective, none)).toBeNull();
+    expect(overlayTransform(new DOMMatrix().translate(0, 0, 5), none)).toBeNull();
+    expect(overlayTransform(new DOMMatrix().rotateAxisAngle(1, 2, 3, 70), none)).toBeNull();
+    expect(overlayTransform(new DOMMatrix().rotateAxisAngle(0, 1, 0, 180), none)).toBeNull();
     expect(overlayTransform(new DOMMatrix().scale(0, 1), none)).toBeNull();
+    expect(overlayTransform(new DOMMatrix().scale(1, 0), none)).toBeNull();
     // A locked transform with a locked individual property leaves too little to set.
     expect(overlayTransform(new DOMMatrix().translate(1, 0), { ...none, translate: new DOMMatrix() })).toBeNull();
   });
