@@ -84,7 +84,10 @@ set. Updates are applied in a microtask, and synchronously before
 `getClientRects`. `getBoundingClientRect` reflects the geometry, as the
 explainer says it should. As natively, `getComputedStyle()` doesn't: it
 reports the authored `transform`, `z-index`, `position`, `clip-path`,
-`pointer-events` and related properties of elements with geometry.
+`pointer-events` and related properties of elements with geometry. Those
+authored values are read together, once per element per task, and read again
+after any DOM change. A stylesheet edited through the CSSOM (`insertRule`,
+`rule.style`) later in the same task isn't seen until the next task.
 
 No stylesheet can override a declaration the page sets inline with
 `!important`. When the page locks `transform` that way (Underglass does on its
@@ -192,10 +195,13 @@ Differences:
   cssHeight, defaultWidth, defaultHeight }` with an `ImageBitmap` it can draw
   with `drawImage`, and the top-level message object gains
   `__hicElementImage: 2`. It has no `close()`.
-- Native Chromium only draws an `ElementImage` into the canvas it was
-  captured from (or the `OffscreenCanvas` transferred from it), and WebGPU
-  uploads need that canvas to have a rendering context. The polyfill doesn't
-  check either, in workers or on the main thread.
+- As natively, an `ElementImage` is only drawn, uploaded with WebGL, or sized
+  with `getElementImageDefaultSize` by the canvas it was captured from (or
+  the `OffscreenCanvas` transferred from it); others throw
+  `InvalidStateError`. The polyfill can't check this for an image received
+  from another thread, so a worker accepts any canvas. Native WebGPU uploads
+  also need that canvas to have a rendering context; the polyfill doesn't
+  check that.
 - Geometry from a worker doesn't reach the main thread yet:
   `updateElementGeometry`, `clearElementGeometry` and the automatic geometry of
   `drawElementImage` in a worker do nothing. Set geometry on the main thread
@@ -218,6 +224,10 @@ computed styles, fonts, images, and form state, then decoded into an
 - Snapshots are asynchronous. A drawn image lags DOM changes by two or three
   frames (about 35–50 ms for a 40-element panel), where native paints in
   the same frame. Drawing before the first `paint` throws, as in native.
+- Drawables that change together are painted together, as natively: a
+  `paint` waits for every snapshot that started in the same frame. A small
+  drawable that changes along with a large one therefore appears when the
+  large one is ready.
 - Serialization costs about 5–50 ms for complex trees: fine for forms, menus,
   and labels, not for animating large subtrees every frame. It grows with the
   number of elements in the drawable (about 1 ms per element in Chromium), not

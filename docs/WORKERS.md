@@ -123,10 +123,12 @@ What doesn't, or differs:
   `DataCloneError` on the sender, and its pixels never reach the worker.
   Natively, snapshots are never tainted. In the browsers tested, the polyfill's
   snapshots aren't either.
-- **No canvas checks.** The polyfill doesn't throw "captured from a different
-  canvas" (main thread or worker) or "No context found" (WebGPU), because a
-  worker can't tell which canvas a transferred `OffscreenCanvas` came from
-  without changing what an unpolyfilled worker receives.
+- **No canvas checks in workers.** On the main thread the polyfill throws
+  "captured from a different canvas" as natively. A received image carries
+  no canvas, though, because a worker can't tell which canvas a transferred
+  `OffscreenCanvas` came from without changing what an unpolyfilled worker
+  receives. So workers accept any canvas, and nobody checks WebGPU's "No
+  context found".
 - **`width` and `height`** are kept, as in Chromium 156.
 - **Geometry from a worker** does nothing yet; see below.
 

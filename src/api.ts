@@ -3,9 +3,9 @@ import { texElementSubImage2DWith } from './contexts/webgl.js';
 import { drawElementImageToTextureWith } from './contexts/webgpu.js';
 import { define, method, restoreAll } from './define.js';
 import { HOST_ATTR, invalidState, isElement } from './dom.js';
-import { createElementImage, ElementImage, elementImageRecord } from './element-image.js';
+import { createElementImage, ElementImage, elementImageRecord, imageRecordFor } from './element-image.js';
 import { linkPlaceholder, placeholderOf, queueOffscreenGeometry } from './geometry/offscreen.js';
-import { flushGeometry, geometryOf, type GeometryUpdate } from './geometry/state.js';
+import { flushGeometry, type Geometry, geometryOf, type GeometryUpdate } from './geometry/state.js';
 import { autoCanvasOf, type CanvasState, nearestState } from './host/canvas-state.js';
 import { CanvasPaintEvent, ElementGeometryUpdateEvent } from './paint/event.js';
 import { getState, observeRoot, syncCanvas } from './runtime.js';
@@ -35,7 +35,7 @@ function eventHandler(target: object, type: string): void {
 
 function sizeOf(canvas: HTMLCanvasElement, source: unknown): { width: number; height: number } {
   if (source instanceof ElementImage) {
-    const record = elementImageRecord(source);
+    const record = imageRecordFor(source, canvas);
     return { width: record.defaultWidth, height: record.defaultHeight };
   }
   if (!isElement(source)) throw new TypeError("The provided value is not of type '(Element or ElementImage)'.");
@@ -122,7 +122,7 @@ export function patch(): void {
   });
   method(canvasProto, 'captureElementImage', function (this: HTMLCanvasElement, element: Element) {
     if (element instanceof ElementImage) throw new TypeError("The provided value is not of type 'Element'.");
-    return createElementImage(recordFor(this, element));
+    return createElementImage(recordFor(this, element), this);
   });
   method(canvasProto, 'getElementImageDefaultSize', function (this: HTMLCanvasElement, source: unknown) {
     return sizeOf(this, source);
@@ -166,9 +166,9 @@ export function patch(): void {
   }
   patchMessaging();
   if (typeof OffscreenCanvas !== 'undefined') {
-    method(OffscreenCanvas.prototype, 'getElementImageDefaultSize', function (source: unknown) {
+    method(OffscreenCanvas.prototype, 'getElementImageDefaultSize', function (this: OffscreenCanvas, source: unknown) {
       if (!(source instanceof ElementImage)) throw new TypeError("The provided value is not of type 'ElementImage'.");
-      const record = elementImageRecord(source);
+      const record = imageRecordFor(source, placeholderOf(this), 'The ElementImage was captured from a different canvas.');
       return { width: record.defaultWidth, height: record.defaultHeight };
     });
     // Without a placeholder canvas on this thread there is nothing to update.
@@ -211,12 +211,11 @@ export function patch(): void {
     return new Proxy(style, {
       get(target, key) {
         if (key === 'getPropertyValue') {
-          return (name: string) => {
-            const read = () => target.getPropertyValue(name);
-            return GEOMETRY_PROPS.has(name) ? geometry.authored(element, read) : read();
-          };
+          return (name: string) =>
+            GEOMETRY_PROPS.get(name) === name ? authoredValue(geometry, element, target, name) : target.getPropertyValue(name);
         }
-        if (typeof key === 'string' && GEOMETRY_PROPS.has(key)) return geometry.authored(element, () => target[key as 'zIndex']);
+        const name = typeof key === 'string' ? GEOMETRY_PROPS.get(key) : undefined;
+        if (name) return authoredValue(geometry, element, target, name);
         const value = Reflect.get(target, key, target) as unknown;
         return typeof value === 'function' ? value.bind(target) : value;
       },
@@ -242,12 +241,50 @@ export function patch(): void {
   });
 }
 
-/** Properties the geometry overlay rule overrides, in both spellings. */
-const GEOMETRY_PROPS = new Set(
-  ['position', 'top', 'right', 'bottom', 'left', 'inset', 'transform', 'transform-origin', 'translate', 'rotate', 'scale', 'z-index', 'clip-path', 'pointer-events'].flatMap(
-    (name) => [name, name.replace(/-(\w)/g, (_, c: string) => c.toUpperCase())],
-  ),
+/** Properties the geometry overlay rule overrides. */
+const GEOMETRY_NAMES = ['position', 'top', 'right', 'bottom', 'left', 'inset', 'transform', 'transform-origin', 'translate', 'rotate', 'scale', 'z-index', 'clip-path', 'pointer-events'];
+/** Each of them by both spellings, mapped to its CSS name. */
+const GEOMETRY_PROPS = new Map(
+  GEOMETRY_NAMES.flatMap((name) => [
+    [name, name],
+    [name.replace(/-(\w)/g, (_, c: string) => c.toUpperCase()), name],
+  ]),
 );
+
+// Reading an authored value switches the element's overlay rule off, which
+// costs a style recalc. A page that reads several of these properties in one
+// task (Underglass reads about 12 per layer) gets them all from one recalc.
+// The values are dropped at the end of the task, or as soon as the DOM changes.
+let authoredCache: Map<Element, Map<string, string>> | null = null;
+let domChanges: MutationObserver | undefined;
+const watchedDocs = new Set<Document>();
+
+function authoredValue(geometry: Geometry, element: Element, style: CSSStyleDeclaration, name: string): string {
+  domChanges ??= new MutationObserver(() => {});
+  if (authoredCache && domChanges.takeRecords().length > 0) authoredCache.clear();
+  if (!authoredCache) {
+    authoredCache = new Map();
+    queueMicrotask(() => {
+      authoredCache = null;
+      domChanges!.disconnect();
+      watchedDocs.clear();
+    });
+  }
+  const doc = element.ownerDocument;
+  if (!watchedDocs.has(doc)) {
+    watchedDocs.add(doc);
+    domChanges.observe(doc, { attributes: true, childList: true, characterData: true, subtree: true });
+  }
+  let values = authoredCache.get(element);
+  if (!values) {
+    const read = new Map<string, string>();
+    geometry.authored(element, () => {
+      for (const n of GEOMETRY_NAMES) read.set(n, style.getPropertyValue(n));
+    });
+    authoredCache.set(element, (values = read));
+  }
+  return values.get(name)!;
+}
 
 export function unpatch(): void {
   restoreAll();

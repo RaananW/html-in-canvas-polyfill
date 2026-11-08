@@ -122,6 +122,70 @@ test('paint after requestPaint has records for children added in the same task',
   expect(result).toEqual([0, 0, 255, 255]);
 });
 
+test('an ElementImage is only drawn into the canvas it was captured from', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    document.body.innerHTML = `
+      <canvas id="c" width="400" height="200" content="drawable"><div id="a" drawable style="width:50px;height:20px;background:red"></div></canvas>
+      <canvas id="d" width="400" height="200" content="drawable"><div id="b" drawable style="width:5px;height:5px;background:blue"></div></canvas>
+      <canvas id="g" width="400" height="200" content="drawable"></canvas>
+      <canvas id="t" width="400" height="200" content="drawable"><div id="f" drawable style="width:5px;height:5px;background:blue"></div></canvas>
+      <canvas id="plain" width="10" height="10"></canvas>`;
+    const byId = (id: string) => document.getElementById(id) as HTMLCanvasElement;
+    const [c, d, t] = [byId('c'), byId('d'), byId('t')];
+    await Promise.all([c, d, t].map((x) => new Promise((r) => x.addEventListener('paint', r, { once: true }))));
+    const a = document.getElementById('a')!;
+    const image = () => c.captureElementImage(a);
+    const attempt = (fn: () => unknown) => {
+      try {
+        fn();
+        return 'ok';
+      } catch (e) {
+        return `${(e as Error).name}: ${(e as Error).message}`;
+      }
+    };
+    const r: Record<string, string> = {
+      same: attempt(() => c.getContext('2d')!.drawElementImage(image(), 0, 0)),
+      other: attempt(() => d.getContext('2d')!.drawElementImage(image(), 0, 0)),
+      plain: attempt(() => byId('plain').getContext('2d')!.drawElementImage(image(), 0, 0)),
+    };
+    // Native Chromium 156 has no getElementImageDefaultSize.
+    if ('getElementImageDefaultSize' in d) r.defaultSize = attempt(() => d.getElementImageDefaultSize(image()));
+    const gl = byId('g').getContext('webgl2');
+    if (gl) {
+      gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 128, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      r.webgl = attempt(() => gl.texElementSubImage2D(gl.TEXTURE_2D, 0, 0, 0, image()));
+    }
+    if (typeof OffscreenCanvas !== 'undefined' && 'transferControlToOffscreen' in t) {
+      r.fresh = attempt(() => new OffscreenCanvas(10, 10).getContext('2d')!.drawElementImage(image(), 0, 0));
+      const offscreen = t.transferControlToOffscreen();
+      const ctx = offscreen.getContext('2d')!;
+      r.transferred = attempt(() => ctx.drawElementImage(t.captureElementImage(document.getElementById('f')!), 0, 0));
+      r.transferredOther = attempt(() => ctx.drawElementImage(image(), 0, 0));
+    }
+    // The image stays bound to the canvas it was captured from.
+    const before = image();
+    d.append(a);
+    await new Promise((res) => setTimeout(res, 50));
+    r.movedOriginal = attempt(() => c.getContext('2d')!.drawElementImage(before, 0, 0));
+    r.movedNew = attempt(() => d.getContext('2d')!.drawElementImage(before, 0, 0));
+    return r;
+  });
+  const other = 'InvalidStateError: The source was captured from a different canvas.';
+  const message = (s: string) => s.replace(/Failed to execute '[^']+' on '[^']+': /, '');
+  const actual = Object.fromEntries(Object.entries(result).map(([k, v]) => [k, message(v)]));
+  expect(actual).toEqual({
+    same: 'ok',
+    other,
+    plain: other,
+    ...('defaultSize' in result ? { defaultSize: other } : {}),
+    ...('webgl' in result ? { webgl: other } : {}),
+    ...('fresh' in result ? { fresh: other, transferred: 'ok', transferredOther: other } : {}),
+    movedOriginal: 'ok',
+    movedNew: other,
+  });
+});
+
 test('throws InvalidStateError for undrawable sources', async ({ page }) => {
   const result = await page.evaluate(async (html) => {
     document.body.innerHTML =
@@ -247,6 +311,33 @@ test('element geometry leaves computed styles alone, for nested content added in
     return [cs.transform, cs.zIndex, cs.position, cs.getPropertyValue('clip-path'), cs.width, a.closest('canvas') === c];
   });
   expect(result).toEqual(['none', 'auto', 'static', 'none', '40px', true]);
+});
+
+test('computed styles of an element with geometry stay current within a task', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    document.body.innerHTML = `
+      <style>.moved > [drawable] { transform: translateX(3px) }</style>
+      <canvas id="c" width="200" height="100" content="drawable"></canvas>`;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    const wrap = document.createElement('div');
+    const a = document.createElement('div');
+    a.setAttribute('drawable', '');
+    a.style.cssText = 'width:40px;height:20px';
+    wrap.append(a);
+    c.append(wrap);
+    c.updateElementGeometry(a, { canvasTransform: new DOMMatrix().translate(50, 25) });
+    await new Promise(requestAnimationFrame);
+    const cs = getComputedStyle(a);
+    const out = [cs.zIndex, cs.position, cs.transform];
+    a.style.zIndex = '5';
+    out.push(cs.zIndex);
+    a.style.position = 'relative';
+    out.push(cs.getPropertyValue('position'));
+    wrap.classList.add('moved');
+    out.push(cs.transform, getComputedStyle(a).getPropertyValue('transform'));
+    return out;
+  });
+  expect(result).toEqual(['auto', 'static', 'none', '5', 'relative', 'matrix(1, 0, 0, 1, 3, 0)', 'matrix(1, 0, 0, 1, 3, 0)']);
 });
 
 test('nested drawables keep their space in the parent snapshot', async ({ page }) => {
@@ -443,3 +534,26 @@ for (const kind of ['input-caret', 'editable-caret'] as const) {
     expect(result.cleared?.caret).toEqual([]);
   });
 }
+
+test('changes made together are painted together, even when one snapshot is slower', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    // #big has 400 children and gains an uncached background image, which the
+    // polyfill fetches before decoding, so its snapshot takes far longer than #small's.
+    const cells = Array.from({ length: 400 }, (_, i) => `<span style="display:inline-block;width:4px;height:4px;background:rgb(${i % 255},0,0)"></span>`).join('');
+    document.body.innerHTML = `
+      <canvas id="c" width="400" height="200" content="drawable">
+        <div id="big" drawable style="width:160px;line-height:0">${cells}</div>
+        <div id="small" drawable style="width:10px;height:10px;background:rgb(0,0,255)"></div>
+      </canvas>`;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    await new Promise((r) => c.addEventListener('paint', r, { once: true }));
+    const paints: string[][] = [];
+    c.addEventListener('paint', (e) => paints.push((e as CanvasPaintEvent).changedElements.map((x) => x.id).sort()));
+    document.getElementById('big')!.style.background = `rgb(0,255,0) url(/examples/wicg/wolf.jpg?${Math.random()}) no-repeat`;
+    document.getElementById('small')!.style.background = 'rgb(255,0,0)';
+    const until = performance.now() + 3000;
+    while (!paints.some((p) => p.includes('big')) && performance.now() < until) await new Promise((r) => setTimeout(r, 20));
+    return paints;
+  });
+  expect(result[0]).toEqual(['big', 'small']);
+});

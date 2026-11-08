@@ -5,9 +5,8 @@ import { gzipSync } from 'node:zlib';
 const entries = [
   // 19.5 KB: postMessage and MessageEvent.data wrappers for workers (about 1.3 KB; docs/WORKERS.md).
   // 20.5 KB: :hover analysis that skips snapshots pointer moves can't change (about 0.95 KB).
-  // 20.75 KB: UA defaults read in the element's state and context, and sizes written in the
-  // layout unit (about 0.15 KB each; together 20.57 KB).
-  { entry: 'src/index.ts', budget: Number(process.env.SIZE_BUDGET_KB ?? 20.75) },
+  // 21 KB: batched paints, cached authored styles and ElementImage canvas checks (about 0.3 KB together).
+  { entry: 'src/index.ts', budget: Number(process.env.SIZE_BUDGET_KB ?? 21) },
   { entry: 'src/worker.ts', budget: Number(process.env.WORKER_SIZE_BUDGET_KB ?? 4) },
 ];
 
