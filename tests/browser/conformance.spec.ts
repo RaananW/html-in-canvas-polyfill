@@ -289,6 +289,31 @@ test('lays out each child on its own, shrink-to-fit, against the content box', a
   });
 });
 
+// A shrink-to-fit wrapping row whose width (273.28125px) computes to a rounded
+// "273.281px": drawn on one line, as laid out, not with its last item wrapped.
+test('keeps a shrink-to-fit row on one line', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const item = (width: string, colour: string) => `<span style="flex:none;width:${width};height:20px;background:${colour}"></span>`;
+    document.body.innerHTML = `
+      <canvas id="c" width="600" height="160" style="width:300px;height:80px" content="drawable">
+        <div id="row" drawable style="display:flex;flex-wrap:wrap;gap:12px;width:fit-content">
+          ${item('34px', 'rgb(255,0,0)')}${item('34px', 'rgb(255,0,0)')}${item('60.921875px', 'rgb(255,0,0)')}${item('62.359375px', 'rgb(255,0,0)')}${item('34px', 'rgb(0,255,0)')}
+        </div>
+      </canvas>`;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    const row = document.getElementById('row')!;
+    await new Promise((r) => c.addEventListener('paint', r, { once: true }));
+    const ctx = c.getContext('2d', { willReadFrequently: true })!;
+    ctx.drawElementImage(row, 0, 0);
+    const px = (x: number, y: number) => Array.from(ctx.getImageData(x, y, 1, 1).data);
+    // In grid pixels (scale 2): the last item ends the first line, nothing starts a second.
+    return { height: row.offsetHeight, last: px(512, 20), second: px(20, 84) };
+  });
+  expect(result.height).toBe(20);
+  expect(result.last).toEqual([0, 255, 0, 255]);
+  expect(result.second).toEqual([0, 0, 0, 0]);
+});
+
 test('canvas element accessors list the drawable children', async ({ page }) => {
   const result = await page.evaluate(async (html) => {
     document.body.innerHTML = html;
