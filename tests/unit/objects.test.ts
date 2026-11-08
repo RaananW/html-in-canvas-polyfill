@@ -16,6 +16,15 @@ function fakeRecord() {
   return { record, close };
 }
 
+describe('VERSION', () => {
+  it('is the package version', async () => {
+    const { VERSION } = await import('../../src/index');
+    const { readFile } = await import('node:fs/promises');
+    const pkg = JSON.parse(await readFile('package.json', 'utf8')) as { version: string };
+    expect(VERSION).toBe(pkg.version);
+  });
+});
+
 describe('ElementImage', () => {
   it('cannot be constructed directly', () => {
     expect(() => new (ElementImage as unknown as new () => ElementImage)()).toThrow(TypeError);

@@ -1,8 +1,10 @@
-import { rm } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import { build } from 'esbuild';
 
 // Stale code-split chunks would otherwise ship in the package.
 await rm('dist', { recursive: true, force: true });
+
+const { version } = JSON.parse(await readFile('package.json', 'utf8'));
 
 const common = {
   bundle: true,
@@ -10,6 +12,8 @@ const common = {
   sourcemap: true,
   legalComments: 'none',
   logLevel: 'warning',
+  // `VERSION` and the published status report the package version.
+  define: { __HIC_VERSION__: JSON.stringify(version) },
 };
 
 await Promise.all([

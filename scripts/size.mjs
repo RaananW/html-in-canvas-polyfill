@@ -8,6 +8,7 @@ const result = await build({
   format: 'esm',
   target: 'es2020',
   write: false,
+  define: { __HIC_VERSION__: '"0.0.0"' },
 });
 const code = result.outputFiles[0].contents;
 const gz = gzipSync(code, { level: 9 }).length;
