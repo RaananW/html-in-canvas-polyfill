@@ -120,8 +120,9 @@ const LISTS = new Set(['ul', 'ol', 'menu', 'dir']);
 // left out, and the clone would take the UA's, so the default is read from an
 // element in the same state. Its `appearance` stays the UA's, so a changed one
 // is still written.
-function getDefaultStyle(src: Element, pseudo: string | null, appearance?: string): Map<string, string> {
+function getDefaultStyle(src: Element, pseudo: string | null): Map<string, string> {
   const type = src instanceof HTMLInputElement ? src.type : '';
+  const appearance = pseudo ? '' : computedStyle(src).appearance;
   const disabled = src.matches(':disabled');
   const nested = LISTS.has(src.localName) && !!src.parentElement?.closest('ul,ol,menu,dir');
   const key = `${src.localName}[${type}]${pseudo ?? ''}${disabled ? ':disabled' : ''}${nested ? '>' : ''}`;
@@ -392,7 +393,7 @@ function cloneNode(
     // Nested drawables have their own snapshots. Keep the box so siblings lay
     // out the same, but paint nothing.
     const he = el as HTMLElement;
-    const decls = diffStyle(csMap, getDefaultStyle(el, null, csMap.get('appearance')), parentStyle);
+    const decls = diffStyle(csMap, getDefaultStyle(el, null), parentStyle);
     decls.push(
       ['box-sizing', 'border-box'],
       ['width', `${he.offsetWidth}px`],
@@ -419,7 +420,7 @@ function cloneNode(
   }
 
   collectFamilies(csMap.get('font-family'), ctx.families);
-  let decls = diffStyle(csMap, getDefaultStyle(el, null, csMap.get('appearance')), parentStyle);
+  let decls = diffStyle(csMap, getDefaultStyle(el, null), parentStyle);
   if (el.localName === 'fieldset') {
     // WebKit's computed fieldset height excludes the rendered legend; pinning
     // it would clip the clone. Let the fieldset size from its content.
