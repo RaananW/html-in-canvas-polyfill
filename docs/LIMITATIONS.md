@@ -84,7 +84,10 @@ set. Updates are applied in a microtask, and synchronously before
 `getClientRects`. `getBoundingClientRect` reflects the geometry, as the
 explainer says it should. As natively, `getComputedStyle()` doesn't: it
 reports the authored `transform`, `z-index`, `position`, `clip-path`,
-`pointer-events` and related properties of elements with geometry.
+`pointer-events` and related properties of elements with geometry. Those
+authored values are read together, once per element per task, and read again
+after any DOM change. A stylesheet edited through the CSSOM (`insertRule`,
+`rule.style`) later in the same task isn't seen until the next task.
 
 No stylesheet can override a declaration the page sets inline with
 `!important`. When the page locks `transform` that way (Underglass does on its

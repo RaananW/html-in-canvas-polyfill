@@ -249,6 +249,33 @@ test('element geometry leaves computed styles alone, for nested content added in
   expect(result).toEqual(['none', 'auto', 'static', 'none', '40px', true]);
 });
 
+test('computed styles of an element with geometry stay current within a task', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    document.body.innerHTML = `
+      <style>.moved > [drawable] { transform: translateX(3px) }</style>
+      <canvas id="c" width="200" height="100" content="drawable"></canvas>`;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    const wrap = document.createElement('div');
+    const a = document.createElement('div');
+    a.setAttribute('drawable', '');
+    a.style.cssText = 'width:40px;height:20px';
+    wrap.append(a);
+    c.append(wrap);
+    c.updateElementGeometry(a, { canvasTransform: new DOMMatrix().translate(50, 25) });
+    await new Promise(requestAnimationFrame);
+    const cs = getComputedStyle(a);
+    const out = [cs.zIndex, cs.position, cs.transform];
+    a.style.zIndex = '5';
+    out.push(cs.zIndex);
+    a.style.position = 'relative';
+    out.push(cs.getPropertyValue('position'));
+    wrap.classList.add('moved');
+    out.push(cs.transform, getComputedStyle(a).getPropertyValue('transform'));
+    return out;
+  });
+  expect(result).toEqual(['auto', 'static', 'none', '5', 'relative', 'matrix(1, 0, 0, 1, 3, 0)', 'matrix(1, 0, 0, 1, 3, 0)']);
+});
+
 test('nested drawables keep their space in the parent snapshot', async ({ page }) => {
   const result = await page.evaluate(async () => {
     document.body.innerHTML = `
