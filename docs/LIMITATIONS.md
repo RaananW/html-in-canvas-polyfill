@@ -29,8 +29,9 @@ then does nothing.
 Native browsers lay out canvas children in place. The polyfill can't, so it
 moves the children into a sibling *host* element (`div[data-hic-host]`). The
 host gets the same content box and inherited styles as the canvas, sits
-exactly on top of it, and is invisible (`opacity: 0`). Only elements with
-geometry are hit-testable.
+exactly on top of it, and is invisible (`filter: opacity(0)`, so drawn
+elements still count as visible to `checkVisibility({ opacityProperty: true })`,
+as natively). Only elements with geometry are hit-testable.
 
 Like native Chromium, each direct child is laid out on its own at the
 content-box origin. Children overlap, their width shrinks to fit, and
@@ -41,6 +42,9 @@ by positioning each child absolutely at the host origin. As a result:
   reads `static`, and authored `position`, offsets and `float` are ignored.
 - A direct child is the containing block for its absolutely positioned
   descendants.
+- The host's filter makes it the containing block for `position: fixed`
+  descendants too: they're placed against the canvas content box, not the
+  viewport, and clipped to it.
 
 Consequences of the move:
 
