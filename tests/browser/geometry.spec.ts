@@ -99,6 +99,44 @@ test('hit testing follows transform and clip', async ({ page }) => {
   expect(result.cleared).toEqual(['c', true]);
 });
 
+// Frameworks lock transforms inline with !important (Underglass does, to keep its
+// own CSS transform off a layer the canvas already moves). Siblings laid out in
+// the same place must still be hit where they are drawn.
+test('hit testing follows geometry when the page locks the transform inline', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    document.body.innerHTML = `
+      <canvas id="c" width="400" height="200" content="drawable">
+        <div id="p" drawable style="width:50px;height:20px;transform:none!important;transform-origin:0 0!important"></div>
+        <div id="q" drawable style="width:50px;height:20px;transform:translate(7px,3px) rotate(5deg)!important"></div>
+        <div id="s" drawable style="width:50px;height:20px;transform:none!important"></div>
+      </canvas>`;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    await new Promise((r) => c.addEventListener('paint', r, { once: true }));
+    const r = c.getBoundingClientRect();
+    const hit = (x: number, y: number) => document.elementFromPoint(r.left + x, r.top + y)?.id ?? null;
+    const [p, q, s] = ['p', 'q', 's'].map((id) => document.getElementById(id)!);
+    // The canvas is 200 × 100 CSS pixels.
+    c.updateElementGeometry(p!, { canvasTransform: new DOMMatrix().translate(60, 0) });
+    c.updateElementGeometry(q!, { canvasTransform: new DOMMatrix().translate(100, 40).rotate(90) });
+    c.updateElementGeometry(s!, { canvasTransform: new DOMMatrix().translate(130, 60).skewX(30) });
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    return {
+      p: [hit(70, 10), hit(10, 10)],
+      // Rotated 90° about (100, 40): the box spans x 80..100, y 40..90.
+      q: [hit(90, 65), hit(130, 50)],
+      // A skew can't be expressed beside a locked transform: not hit at all, rather than hit in the wrong place.
+      s: [hit(150, 70), hit(25, 10)],
+      inline: [p!.style.getPropertyValue('transform'), p!.style.getPropertyPriority('transform')],
+    };
+  });
+  expect(result.p).toEqual(['p', 'c']);
+  expect(result.q).toEqual(['q', 'c']);
+  expect(result.s[0]).not.toBe('s');
+  expect(result.s[1]).not.toBe('s');
+  // The page's own declaration is left alone.
+  expect(result.inline).toEqual(['none', 'important']);
+});
+
 test('later updates are on top unless preserveHitTestOrder is set', async ({ page }) => {
   const result = await page.evaluate(() => {
     const c = document.getElementById('c') as HTMLCanvasElement;
