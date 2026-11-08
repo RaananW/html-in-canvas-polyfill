@@ -138,7 +138,15 @@ computed styles, fonts, images, and form state, then decoded into an
   frames (about 35–50 ms for a 40-element panel), where native paints in
   the same frame. Drawing before the first `paint` throws, as in native.
 - Serialization costs about 5–50 ms for complex trees: fine for forms, menus,
-  and labels, not for animating large subtrees every frame.
+  and labels, not for animating large subtrees every frame. It grows with the
+  number of elements in the drawable (about 1 ms per element in Chromium), not
+  with the size of the change.
+- A running CSS animation or transition is drawn natively every frame. Here,
+  captures that only follow it wait three times the last capture's cost, so
+  they use about a quarter of the main thread. A small drawable still updates
+  every frame, while a spinner inside a 500-element panel updates about once a
+  second. Its end state, and any other change, is captured at once. Keep
+  endless animations in a drawable of their own to draw them smoothly.
 - Changes are detected with MutationObserver, ResizeObserver, input, change,
   focus, pointer, scroll, load, CSS transition/animation events, and
   `document.fonts`. Changes those can't see (animations started with
