@@ -174,6 +174,49 @@ const SCENARIOS: Record<string, Scenario> = {
     before: [RED, WHITE],
     expected: [WHITE, RED],
   },
+  'an inset of a positioned element, after its container grows': {
+    // The red box sits at left: 50% of a container that widens with the box
+    // beside it; the red box itself doesn't change.
+    html: canvas(`<div id="layer" drawable style="background:white;width:180px;height:20px"><div style="position:relative;display:inline-block;height:20px;vertical-align:top"><i id="w" style="display:inline-block;width:20px;height:20px"></i><div style="position:absolute;left:50%;top:0;width:10px;height:20px;background:red"></div></div></div>`),
+    change: () => {
+      (document.getElementById('w') as HTMLElement).style.width = '100px';
+    },
+    // 20 px wide: the box is at 10-20 px. 100 px wide: at 50-60 px.
+    points: [[15, 10], [55, 10]],
+    before: [RED, WHITE],
+    expected: [WHITE, RED],
+  },
+  'a percentage transform, after its box grows': {
+    html: canvas(`<div id="layer" drawable style="background:white;width:180px;height:20px"><div id="box" style="display:inline-block;height:20px;transform:translateX(100%);background:red"><span id="t" style="font:10px monospace;color:red">aaaa</span></div></div>`),
+    change: () => {
+      (document.getElementById('t')!.firstChild as Text).data = 'aaaaaaaa';
+    },
+    // 4 chars: 24 px, drawn at 24-48. 8 chars: 48 px, drawn at 48-96.
+    points: [[30, 10], [80, 10]],
+    before: [RED, WHITE],
+    expected: [WHITE, RED],
+  },
+  'logical margins in a right-to-left layout': {
+    // The box keeps margin-inline-start (its right margin) as its neighbour's text grows.
+    html: canvas(`<div id="layer" drawable dir="rtl" style="display:flex;background:white;width:180px;height:20px"><div style="width:20px;height:20px;margin-inline-start:30px;background:red"></div><span id="t" style="font:10px monospace;color:white">a</span></div>`),
+    change: () => {
+      (document.getElementById('t')!.firstChild as Text).data = 'aaaaaaaaaa';
+    },
+    // Right to left: 30 px margin from the right edge (180), so the box is at 130-150.
+    points: [[140, 10], [165, 10]],
+    before: [RED, WHITE],
+    expected: [RED, WHITE],
+  },
+  'logical sizes in a vertical writing mode': {
+    html: canvas(`<div id="layer" drawable style="writing-mode:vertical-lr;background:white;width:60px;height:80px"><div style="inline-size:20px;block-size:10px;margin-block-start:10px;background:red"></div><span id="t" style="font:10px monospace;color:white">a</span></div>`),
+    change: () => {
+      (document.getElementById('t')!.firstChild as Text).data = 'aaaa';
+    },
+    // Vertical, left to right: the block axis is horizontal, so the box is 10 px wide at x 10-20, 20 px tall.
+    points: [[15, 10], [5, 10], [15, 30]],
+    before: [RED, WHITE, WHITE],
+    expected: [RED, WHITE, WHITE],
+  },
 };
 
 for (const incremental of [true, false]) {

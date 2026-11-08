@@ -194,11 +194,26 @@ from the design above:
   `@container` somewhere, which would have turned reuse off. Instead each
   snapshot records the size of every query container in and above the
   drawable, and everything is re-read only when one of them changed size.
-- **More properties are always re-read:** `position`, `z-index`,
-  `clip-path`, `translate`, `rotate` and `scale`, the ones element geometry
-  overrides. The polyfill's own stylesheet, which holds that geometry, is
-  left out of the stylesheet check, so drawing an element doesn't make the
-  next snapshot re-read everything.
+- **Layout values are re-read only where they can have changed**
+  (`relayout`). The list above is about 40 properties, and re-reading all of
+  them for every element was the largest cost left. A reused element now
+  re-reads:
+  - `width`, `height`, and the physical margins and padding, always;
+  - insets, only when it's positioned (for `position: static`, the reported
+    value is the computed one, which doesn't follow layout);
+  - `transform`, `transform-origin` and `perspective-origin`, only when its
+    size changed (their percentages resolve against its own box);
+  - grid tracks, only for grids;
+  - `position`, `z-index`, `clip-path`, `translate`, `rotate` and `scale`, the
+    properties element geometry overrides, only when it has geometry.
+
+  Logical properties (`margin-inline-start`, `inline-size`, …) are mapped from
+  the physical ones for horizontal and vertical writing modes, and read
+  otherwise. `line-height` isn't a layout value: it follows `font-size`. A
+  typical element re-reads 10 properties instead of about 40.
+- **The polyfill's own stylesheet** holds element geometry. It's left out of
+  the stylesheet check, so drawing an element doesn't make the next snapshot
+  re-read everything.
 - **Animations mark their targets when they start and when they end**
   (`animationstart`, `transitionrun`, `animationend`, `transitionend` and the
   cancel events). Once a transition ends, `getAnimations()` no longer lists
