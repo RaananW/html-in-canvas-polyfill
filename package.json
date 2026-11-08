@@ -1,6 +1,6 @@
 {
   "name": "@underglass/html-in-canvas-polyfill",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Polyfill for the WICG HTML-in-Canvas proposal (drawElementImage, paint events, ElementImage).",
   "license": "MIT",
   "type": "module",
@@ -51,6 +51,7 @@
     "dist",
     "README.md",
     "LICENSE",
+    "CHANGELOG.md",
     "docs/LIMITATIONS.md",
     "docs/WORKERS.md"
   ],
