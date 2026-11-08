@@ -1,9 +1,9 @@
 # Incremental snapshots: design
 
-Status: step 1 of the plan (the cache and its invalidation rules) is
-implemented; see [As implemented](#as-implemented-step-1). The idle re-check
-(step 2) isn't yet. Measured on 0.3.0 with the benchmark in `bench/`
-(`pnpm bench`).
+Status: steps 1 (the cache and its invalidation rules) and 2 (the idle
+re-check) of the plan are implemented; see
+[As implemented](#as-implemented-step-1). Measured on 0.3.0 with the
+benchmark in `bench/` (`pnpm bench`).
 
 ## The problem
 
@@ -135,6 +135,15 @@ each element in full and compares with the cache. A difference marks the
 drawable dirty and drops the stale entries, so a missed change heals within
 about a second without a long task. The re-check stops when the page is busy
 and resumes later.
+
+As implemented (`scheduleRecheck` in `src/host/canvas-state.ts`,
+`StyleCache.check` in `src/snapshot/serializer.ts`): each snapshot records
+what it reused, and a newer snapshot of the same drawable replaces the list.
+Slices take at most 4 ms, through `requestIdleCallback` with a 1 s timeout,
+so a page that's never idle still gets them. The first stale element drops
+its entry, re-reads its subtree in the next snapshot, and ends the check;
+that snapshot schedules the next one. A change no rule sees, and that no
+snapshot follows, is still not drawn: that's the same as without reuse.
 
 ## Expected results
 

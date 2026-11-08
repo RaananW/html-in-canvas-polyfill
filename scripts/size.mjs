@@ -6,8 +6,8 @@ const entries = [
   // 19.5 KB: postMessage and MessageEvent.data wrappers for workers (about 1.3 KB; docs/WORKERS.md).
   // 20.5 KB: :hover analysis that skips snapshots pointer moves can't change (about 0.95 KB).
   // 21 KB: batched paints, cached authored styles and ElementImage canvas checks (about 0.3 KB together).
-  // 23.5 KB: incremental snapshots (about 1.8 KB with the layout re-read rules; docs/INCREMENTAL.md). The cap for now is 25 KB.
-  { entry: 'src/index.ts', budget: Number(process.env.SIZE_BUDGET_KB ?? 23.5) },
+  // 24 KB: incremental snapshots (about 2.2 KB with the layout re-read rules and the idle re-check; docs/INCREMENTAL.md). The cap for now is 25 KB.
+  { entry: 'src/index.ts', budget: Number(process.env.SIZE_BUDGET_KB ?? 24) },
   { entry: 'src/worker.ts', budget: Number(process.env.WORKER_SIZE_BUDGET_KB ?? 4) },
 ];
 

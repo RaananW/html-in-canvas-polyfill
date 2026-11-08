@@ -217,6 +217,19 @@ const SCENARIOS: Record<string, Scenario> = {
     before: [RED, WHITE, WHITE],
     expected: [RED, WHITE, WHITE],
   },
+  'a rule edited in place, then another change': {
+    // No rule sees an in-place CSSOM edit. The snapshot the second change
+    // takes reuses #a's stale style; the idle re-check catches it.
+    html: canvas(`<div id="layer" drawable style="display:flex"><style id="s">.x { background: white }</style>${box('a', '').replace('<div', '<div class="x"')}${box('b', 'background:white')}</div>`),
+    change: () => {
+      const sheet = (document.getElementById('s') as HTMLStyleElement).sheet!;
+      (sheet.cssRules[0] as CSSStyleRule).style.background = 'blue';
+      document.getElementById('b')!.setAttribute('data-n', '1');
+    },
+    points: [[10, 10]],
+    before: [WHITE],
+    expected: [BLUE],
+  },
 };
 
 for (const incremental of [true, false]) {

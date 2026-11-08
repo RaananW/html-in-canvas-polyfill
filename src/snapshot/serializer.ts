@@ -139,6 +139,10 @@ export class StyleCache {
   reused = 0;
   /** Query containers (container-type other than normal) the last snapshot met. */
   containers: Element[] = [];
+  /** What the last snapshot reused, to re-check in idle time: [element, pseudo-element]. */
+  reusedList: Array<[Element, string | null]> = [];
+  /** The custom properties the last snapshot read. */
+  customProps: ReadonlySet<string> = EMPTY;
 
   get(el: Element, pseudo: string | null): StyleEntry | undefined {
     return this.entries.get(el)?.get(pseudo ?? '');
@@ -153,6 +157,23 @@ export class StyleCache {
   /** Drops what's kept for `el` (its pseudo-elements included). */
   delete(el: Element): void {
     this.entries.delete(el);
+  }
+
+  /**
+   * Reads `el`'s style in full and compares it with what's kept: false when
+   * a value the cache would reuse has changed (or the element's UA default
+   * has), so the kept entry is stale.
+   */
+  check(el: Element, pseudo: string | null): boolean {
+    const kept = this.get(el, pseudo);
+    if (!kept || !el.isConnected) return true;
+    if (getDefaultStyle(el, pseudo) !== kept.defaults) return false;
+    const map = styleToMap(computedStyle(el, pseudo), this.customProps, false);
+    for (const [name, value] of map) {
+      if (LAYOUT.has(name)) continue;
+      if (value !== (kept.values.get(name) ?? kept.defaults.get(name))) return false;
+    }
+    return true;
   }
 }
 
@@ -254,6 +275,7 @@ function readStyle(el: Element, pseudo: string | null, ctx: CloneContext): ReadS
   let style: ReadStyle;
   if (kept?.decls && kept.defaults === defaults && !styles.fresh(el)) {
     styles.cache.reused++;
+    styles.cache.reusedList.push([el, pseudo]);
     const layout = relayout(el, cs, kept, defaults);
     style = { get: (n) => layout.get(n) ?? kept.values.get(n) ?? defaults.get(n), map: null, entry: kept };
   } else {
@@ -796,6 +818,7 @@ export async function snapshot(el: Element, opts: SnapshotOptions): Promise<Snap
   if (width <= 0 || height <= 0) return { bitmap: null, width: 0, height: 0, cssWidth, cssHeight, warnings };
 
   const scan = scanSheets(el, warnings);
+  if (opts.styles) opts.styles.cache.customProps = scan.customProps;
   const ctx: CloneContext = {
     isBoundary: opts.isBoundary,
     styles: opts.styles,
