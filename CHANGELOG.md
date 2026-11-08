@@ -4,6 +4,51 @@ All notable changes to `@underglass/html-in-canvas-polyfill`. The polyfill
 does nothing in browsers with native HTML-in-Canvas support, so these changes
 only affect browsers without it.
 
+## 0.3.0 (2026-11-08)
+
+### Changed
+
+- **An `ElementImage` is only drawn into the canvas it was captured from**,
+  as natively. Drawing it with `drawElementImage` into another canvas or
+  `OffscreenCanvas`, uploading it with WebGL `texElementSubImage2D`, or
+  passing it to another canvas's `getElementImageDefaultSize` now throws
+  `InvalidStateError: The source was captured from a different canvas.` The
+  `OffscreenCanvas` transferred from the capture canvas counts as the same
+  canvas. WebGPU uploads aren't checked, as natively, and neither are images
+  received from another thread.
+- **The host is hidden with `filter: opacity(0)` instead of `opacity: 0`**, so
+  drawn elements are visible to `checkVisibility({ opacityProperty: true })`,
+  as natively. As a side effect, `position: fixed` descendants of drawn
+  elements are placed against the canvas content box instead of the viewport.
+- **Drawables that change together are painted together**, in one `paint`
+  event, as natively. A `paint` now waits for every snapshot that started in
+  the same frame, so a small drawable that changes along with a large one
+  appears when the large one is ready.
+- **`getComputedStyle` on elements with geometry is cheaper.** The authored
+  geometry properties (`transform`, `position`, `z-index`, …) are read
+  together, once per element per task, and read again after any DOM change.
+  On the Underglass compare demo in Chromium, that time drops from 199–314 ms
+  to 23–38 ms over a fixed pointer path. A stylesheet edited through the
+  CSSOM later in the same task isn't seen until the next task.
+- The main entry is 20.94 KB min+gzip, up from 20.24 KB.
+
+### Fixed
+
+These made Underglass's Strata gallery draw differently from native; with
+them, every Strata tab matches native to within 0.1% of its pixels.
+
+- Radios styled with `appearance: none` and `border-radius: 50%` are drawn
+  round, disabled fields keep their page background, and nested lists keep
+  `list-style-type: none`. UA defaults are now read in the element's own
+  state (`:disabled`, `appearance`) and context (a list inside a list).
+- Sizes are written in the engine's layout unit (1/64 px in Blink and WebKit,
+  1/60 px in Gecko), so a shrink-to-fit row no longer wraps its last item.
+- A table with a caption sizes from its rows, instead of spreading the
+  caption's height over them in Blink and WebKit.
+- The test "hover and active states are drawn, including on enclosing
+  drawables" no longer fails intermittently in WebKit; it was the paint
+  ordering above.
+
 ## 0.2.0 (2026-11-08)
 
 ### Added
