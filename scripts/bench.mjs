@@ -13,6 +13,7 @@
 //   snapMs      their main-thread time in total, and the longest one
 //   latency     a press, key or scripted change to the next paint, median and max
 //   longTasks   long tasks and their total time
+//   read/reuse  elements read in full and reused per snapshot (incremental snapshots), median
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -50,13 +51,13 @@ const workloads = [...WORKLOADS, ...(args.external ? EXTERNAL : [])].filter((w) 
 
 /** Measures snapshots, paint latency and long tasks in every page the context opens. */
 const PROBE = `(() => {
-  const m = { snapshots: [], latencies: [], longTasks: [], since: 0 };
+  const m = { snapshots: [], reads: [], latencies: [], longTasks: [], since: 0 };
   window.__bench = m;
   window.__benchChange = () => { m.since = performance.now(); };
   const listen = () => {
     try {
       new PerformanceObserver((list) => {
-        for (const e of list.getEntries()) if (e.name === 'html-in-canvas snapshot') m.snapshots.push(e.duration);
+        for (const e of list.getEntries()) if (e.name === 'html-in-canvas snapshot') { m.snapshots.push(e.duration); if (e.detail) m.reads.push(e.detail); }
       }).observe({ type: 'measure', buffered: false });
     } catch {}
     try {
@@ -70,7 +71,7 @@ const PROBE = `(() => {
   addEventListener('paint', () => {
     if (m.since) { m.latencies.push(performance.now() - m.since); m.since = 0; }
   }, true);
-  m.reset = () => { m.snapshots.length = 0; m.latencies.length = 0; m.longTasks.length = 0; m.since = 0; };
+  m.reset = () => { m.snapshots.length = 0; m.reads.length = 0; m.latencies.length = 0; m.longTasks.length = 0; m.since = 0; };
 })();`;
 
 const median = (xs) => {
@@ -127,13 +128,15 @@ async function runOnce(browser, w) {
   await w.act(page);
   await page.waitForTimeout(500);
   const wallMs = Date.now() - t0;
-  const m = await page.evaluate(() => ({ snapshots: [...window.__bench.snapshots], latencies: [...window.__bench.latencies], longTasks: [...window.__bench.longTasks] }));
+  const m = await page.evaluate(() => ({ snapshots: [...window.__bench.snapshots], reads: [...window.__bench.reads], latencies: [...window.__bench.latencies], longTasks: [...window.__bench.longTasks] }));
   await context.close();
   return {
     wallMs,
     snapshots: m.snapshots.length,
     snapMs: m.snapshots.reduce((a, b) => a + b, 0),
     snapMax: Math.max(0, ...m.snapshots),
+    read: median(m.reads.map((r) => r.read)),
+    reused: median(m.reads.map((r) => r.reused)),
     latencyMedian: median(m.latencies),
     latencyMax: Math.max(0, ...m.latencies),
     longTasks: m.longTasks.length,
@@ -157,6 +160,7 @@ try {
       snapMax: round(mid('snapMax')),
       latency: `${round(mid('latencyMedian'))} / ${round(mid('latencyMax'))}`,
       longTasks: `${mid('longTasks')} (${round(mid('longMs'))} ms)`,
+      'read/reuse': Number.isFinite(mid('read')) ? `${round(mid('read'))} / ${round(mid('reused'))}` : '-',
     });
     console.error(`${w.name}: done`);
   }

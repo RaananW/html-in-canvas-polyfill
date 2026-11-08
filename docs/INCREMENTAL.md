@@ -1,7 +1,9 @@
 # Incremental snapshots: design
 
-Status: proposed, not implemented. Measured on 0.3.0 with the benchmark in
-`bench/` (`pnpm bench`).
+Status: step 1 of the plan (the cache and its invalidation rules) is
+implemented; see [As implemented](#as-implemented-step-1). The idle re-check
+(step 2) isn't yet. Measured on 0.3.0 with the benchmark in `bench/`
+(`pnpm bench`).
 
 ## The problem
 
@@ -170,7 +172,43 @@ in all three engines before it's merged.
    debug switch.
 2. The idle re-check.
 3. Skip snapshots that change nothing for `:active` and `:focus` too
-   (extending `hover.ts`), so a real click's press and release don't each
+   (extending `selectors.ts`), so a real click's press and release don't each
    take one.
 4. Measure, document in LIMITATIONS, and raise the size budget as needed
    (within 25 KB).
+
+## As implemented (step 1)
+
+The cache lives in `StyleCache` (`src/snapshot/serializer.ts`); the
+invalidation rules are in `CanvasState.freshStyles` and `markStyle`
+(`src/host/canvas-state.ts`), and the selector analysis is in
+`src/snapshot/selectors.ts`, which replaces `hover.ts`. Where it departs
+from the design above:
+
+- **Declarations are kept, not only values.** A reused element keeps its
+  finished declarations and diffs only its re-read properties against its
+  UA default and parent. Diffing ~380 properties per element was the next
+  largest cost once styles were reused. The values that differ from the UA
+  default are kept too, as the parent values its children diff against.
+- **Container queries don't re-read everything.** Both Underglass demos use
+  `@container` somewhere, which would have turned reuse off. Instead each
+  snapshot records the size of every query container in and above the
+  drawable, and everything is re-read only when one of them changed size.
+- **More properties are always re-read:** `position`, `z-index`,
+  `clip-path`, `translate`, `rotate` and `scale`, the ones element geometry
+  overrides. The polyfill's own stylesheet, which holds that geometry, is
+  left out of the stylesheet check, so drawing an element doesn't make the
+  next snapshot re-read everything.
+- **Animations mark their targets when they start and when they end**
+  (`animationstart`, `transitionrun`, `animationend`, `transitionend` and the
+  cancel events). Once a transition ends, `getAnimations()` no longer lists
+  it, and its end state would otherwise be drawn from the last value
+  captured mid-transition.
+- **Ancestors outside the canvas.** An attribute change on an element that
+  contains a canvas's host takes new snapshots of that canvas, re-read in
+  full. Before, such a change (a theme class on a wrapper) wasn't drawn
+  until something inside the canvas changed.
+- **`install({ incremental: false })`** reads every element in full.
+
+Each snapshot's `html-in-canvas snapshot` user timing carries
+`{ read, reused }` in its `detail`, and `pnpm bench` reports it.

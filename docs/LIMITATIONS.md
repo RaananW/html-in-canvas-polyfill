@@ -275,6 +275,20 @@ computed styles, fonts, images, and form state, then decoded into an
 - Snapshots don't read properties that can't change a still image
   (animations, transitions, scrolling, cursor, pointer and caret properties),
   or SVG-only properties on HTML elements.
+- Snapshots are incremental ([INCREMENTAL.md](INCREMENTAL.md)). An element
+  whose style can't have changed since the last snapshot reuses its
+  declarations, and only its sizes and positions are read again. A DOM
+  change, a state pseudo-class or `:has()` matching differently, a running
+  animation, or a query container changing size re-reads the affected
+  elements; a stylesheet, viewport, font or ancestor change re-reads them all.
+  Changes no rule sees can be drawn stale: a stylesheet edited in place
+  through the CSSOM (`rule.style.color = …`), a media query that flips without
+  a resize (`prefers-color-scheme`), or a change to an ancestor's sibling
+  that a selector depends on (`.open ~ main .card`). They're drawn once
+  something else changes the element. `install({ incremental: false })` reads
+  every element in full, to rule this out.
+- An attribute change on an element that contains a canvas (a theme class
+  on a wrapper, for example) takes new snapshots of that canvas.
 - Cross-origin images and fonts without CORS are left out. Iframes and
   `<video>` render empty. A `<canvas>` inside a drawable is copied when the
   snapshot is taken (skipped if tainted), and isn't re-copied when only its

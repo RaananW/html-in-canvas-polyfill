@@ -1,9 +1,9 @@
 import { composedParent, computedStyle, HOST_ATTR, isElement, reverseTreeOrder } from '../dom.js';
 import { Geometry } from '../geometry/state.js';
 import { CanvasPaintEvent } from '../paint/event.js';
-import { type HoverSignature, hoverSignature, sameSignature } from '../snapshot/hover.js';
 import { SnapshotRecord } from '../snapshot/record.js';
-import { snapshot } from '../snapshot/serializer.js';
+import { changedMatches, pageRules, sameSignature, type Signature, stateSignature } from '../snapshot/selectors.js';
+import { snapshot, StyleCache } from '../snapshot/serializer.js';
 
 export type HostMode = 'auto' | 'authoring';
 
@@ -33,6 +33,27 @@ const CARET_BLINK_MS = 500;
  */
 const ANIMATION_CAPTURE_SPACING = 3;
 
+/** Incremental snapshots (docs/INCREMENTAL.md); install({ incremental: false }) turns them off. */
+export const snapshotSettings = { incremental: true };
+
+/** What a drawable's last snapshot was taken against. */
+interface CaptureContext {
+  signature: Signature;
+  /** The page rules' key: stylesheets added, removed or edited at the top level. */
+  key: string;
+  viewport: string;
+  /** With container queries: each query container's size, in and above the drawable. */
+  containers?: string;
+}
+
+/** The sizes of `list`, as getComputedStyle reports them (used, unrounded px). */
+function sizes(list: Element[]): string {
+  return list.map((e) => {
+    const cs = computedStyle(e);
+    return `${cs.width}x${cs.height}`;
+  }).join();
+}
+
 export interface StateCallbacks {
   schedule(): void;
   onError(error: unknown): void;
@@ -61,8 +82,16 @@ export class CanvasState {
   private readonly animating = new Set<Element>();
   /** Drawables a pointer entered or left, checked for :hover changes on the next tick. */
   private readonly hoverChecks = new Set<Element>();
-  /** What the :hover selectors matched when each drawable was last captured. */
-  private readonly hoverSignatures = new WeakMap<Element, HoverSignature>();
+  private readonly captured = new WeakMap<Element, CaptureContext>();
+  /** Styles kept between snapshots; null when incremental snapshots are off. */
+  private readonly styleCache = snapshotSettings.incremental ? new StyleCache() : null;
+  /**
+   * Per drawable, the elements whose subtrees may have new styles since its
+   * last snapshot, from DOM changes; 'all' when anything may have changed.
+   */
+  private readonly styleChanges = new Map<Element, Set<Element> | 'all'>();
+  /** Per drawable, the query containers it and its ancestors had at its last snapshot. */
+  private readonly queryContainers = new WeakMap<Element, Element[]>();
   /** Main-thread milliseconds the last capture of each drawable took, and when it ended. */
   private readonly captureCost = new Map<Element, { ms: number; ended: number }>();
   private readonly observed = new Set<Element>();
@@ -129,10 +158,18 @@ export class CanvasState {
     const markTarget = (e: Event) => {
       if (isElement(e.target)) this.markNode(e.target);
     };
+    // An animation's target has new styles when it starts, and again when it
+    // ends (getAnimations no longer lists it then).
     const animationStart = (e: Event) => {
       const d = isElement(e.target) ? this.drawableFor(e.target) : null;
       if (d) this.animating.add(d);
+      if (isElement(e.target)) this.markStyle(e.target);
       this.callbacks.schedule();
+    };
+    const animationEnd = (e: Event) => {
+      if (!isElement(e.target)) return;
+      this.markNode(e.target);
+      this.markStyle(e.target);
     };
     // :hover, :active and :focus-within also match the target's ancestors,
     // which may be enclosing drawables.
@@ -157,7 +194,7 @@ export class CanvasState {
     };
     for (const type of ['pointerover', 'pointerout']) this.listeners.push([type, checkHover]);
     for (const type of ['animationstart', 'transitionrun', 'animationend', 'transitionend', 'animationcancel', 'transitioncancel']) {
-      this.listeners.push([type, type.endsWith('start') || type.endsWith('run') ? animationStart : markTarget]);
+      this.listeners.push([type, type.endsWith('start') || type.endsWith('run') ? animationStart : animationEnd]);
     }
     for (const [type, fn] of this.listeners) this.host.addEventListener(type, fn, true);
     this.onSelectionChange = () => this.selectionChanged();
@@ -283,7 +320,29 @@ export class CanvasState {
 
   markAll(): void {
     this.allDirty = true;
+    for (const d of this.observed) this.styleChanges.set(d, 'all');
     this.callbacks.schedule();
+  }
+
+  /**
+   * An attribute or child-list change on `el`: its subtree may have new
+   * styles, and so may its following siblings' through + and ~.
+   */
+  markStyle(el: Element): void {
+    let siblings: boolean | undefined;
+    for (const d of this.observed) {
+      const changes = this.styleChanges.get(d);
+      if (changes === 'all') continue;
+      if (d === el || d.contains(el)) {
+        if (changes) changes.add(el);
+        else this.styleChanges.set(d, new Set([el]));
+      } else if (el.contains(d)) {
+        this.styleChanges.set(d, 'all');
+      } else if (el.parentNode?.contains(d) && (siblings ??= pageRules(el.ownerDocument)?.siblings ?? true)) {
+        // A sibling of an element containing the drawable.
+        this.styleChanges.set(d, 'all');
+      }
+    }
   }
 
   markStructure(): void {
@@ -426,8 +485,8 @@ export class CanvasState {
       for (const el of this.observed) this.dirty.add(el);
     }
     for (const el of this.hoverChecks) {
-      const last = this.hoverSignatures.get(el);
-      if (!last || !sameSignature(last, hoverSignature(el))) this.dirty.add(el);
+      const last = this.captured.get(el);
+      if (!last || !sameSignature(last.signature, stateSignature(el))) this.dirty.add(el);
     }
     this.hoverChecks.clear();
     const now = performance.now();
@@ -463,7 +522,7 @@ export class CanvasState {
     this.inFlight.add(el);
     const batch = this.ticks;
     this.inFlightBatch.set(el, batch);
-    this.hoverSignatures.set(el, hoverSignature(el));
+    const styles = this.styleCache ? { cache: this.styleCache, fresh: this.freshStyles(el) } : undefined;
     const scaleX = this.scaleX;
     const scaleY = this.scaleY;
     // Cloning the element and reading its styles, the main-thread work, runs
@@ -474,12 +533,15 @@ export class CanvasState {
       scaleY,
       isBoundary: (e) => hostStates.has(e) || this.isDrawable(e),
       rootStyle: this.geometry.authoredStyle(el),
+      styles,
     });
     const ms = performance.now() - started;
+    if (styles && pageRules(el.ownerDocument)?.containers) this.recordContainers(el);
     // Visible in DevTools' performance panel, and read by scripts/bench.mjs.
     // Browsers without the options form (Safari before 14.1) throw.
     try {
-      performance.measure('html-in-canvas snapshot', { start: started, duration: ms });
+      const detail = this.styleCache ? { read: this.styleCache.read, reused: this.styleCache.reused } : undefined;
+      performance.measure('html-in-canvas snapshot', { start: started, duration: ms, detail });
     } catch {
       // No measure, no harm.
     }
@@ -504,6 +566,63 @@ export class CanvasState {
         if (this.redo.delete(el)) this.dirty.add(el);
         this.callbacks.schedule();
       });
+  }
+
+  /**
+   * Which elements of `el` the next snapshot must read in full, and records
+   * what it's taken against (docs/INCREMENTAL.md).
+   */
+  private freshStyles(el: Element): (e: Element) => boolean {
+    const rules = pageRules(el.ownerDocument);
+    const signature = rules ? stateSignature(el, rules) : null;
+    const viewport = `${innerWidth}x${innerHeight}`;
+    const last = this.captured.get(el);
+    const changes = this.styleChanges.get(el);
+    this.styleChanges.delete(el);
+    const context: CaptureContext = { signature, key: rules?.key ?? '', viewport };
+    this.captured.set(el, context);
+    const cache = this.styleCache!;
+    // Container queries follow container sizes, which come from layout: compare
+    // the sizes of the containers this drawable met last time.
+    const containers = rules?.containers ? sizes(this.queryContainers.get(el) ?? []) : undefined;
+    cache.read = cache.reused = 0;
+    cache.containers = [];
+    const all = () => true;
+    if (!last || !rules || changes === 'all' || last.key !== rules.key || last.viewport !== viewport) return all;
+    if (rules.containers && (last.containers === undefined || last.containers !== containers)) return all;
+    const matched = changedMatches(last.signature, signature);
+    if (!matched) return all;
+    const roots = new Set(changes);
+    for (const m of matched) {
+      // A changed ancestor changes what the whole drawable inherits.
+      if (m !== el && m.contains(el)) return all;
+      roots.add(m);
+    }
+    for (const animation of el.getAnimations?.({ subtree: true }) ?? []) {
+      const target = (animation.effect as KeyframeEffect | null)?.target;
+      if (target) roots.add(target);
+    }
+    if (rules.siblings) {
+      for (const r of [...roots]) for (let s = r.nextElementSibling; s; s = s.nextElementSibling) roots.add(s);
+    }
+    const fresh = new Set<Element>();
+    for (const r of roots) {
+      if (r !== el && !el.contains(r)) continue;
+      fresh.add(r);
+      for (const e of Array.from(r.querySelectorAll('*'))) fresh.add(e);
+    }
+    return (e) => fresh.has(e);
+  }
+
+  /** The query containers in and above `el`, and their sizes, for the next snapshot to compare. */
+  private recordContainers(el: Element): void {
+    const list = [...this.styleCache!.containers];
+    for (let n = el.parentElement; n; n = n.parentElement) {
+      if (computedStyle(n).containerType !== 'normal') list.push(n);
+    }
+    this.queryContainers.set(el, list);
+    const context = this.captured.get(el);
+    if (context) context.containers = sizes(list);
   }
 
   private dispatchPaint(): void {
