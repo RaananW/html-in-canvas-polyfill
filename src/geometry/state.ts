@@ -106,28 +106,27 @@ function lockedTransform(el: Element): LockedTransform {
  * polyfill's own stylesheet, so they never show up as DOM mutations.
  */
 export class Geometry {
-  private readonly entries = new Map<Element, Entry>();
+  readonly #entries = new Map<Element, Entry>();
   /** Hit-test stack; the last element is on top. */
-  private stack: Element[] = [];
-  private dirty = false;
+  #stack: Element[] = [];
+  #dirty = false;
+  readonly #owner: GeometryOwner;
 
-  constructor(private readonly owner: GeometryOwner) {}
-
-  has(el: Element): boolean {
-    return this.entries.has(el);
+  constructor(owner: GeometryOwner) {
+    this.#owner = owner;
   }
 
   transformOf(el: Element): DOMMatrix {
-    const entry = this.entries.get(el);
+    const entry = this.#entries.get(el);
     return entry ? DOMMatrix.fromMatrix(entry.transform) : new DOMMatrix();
   }
 
   update(el: Element, update: GeometryUpdate): void {
-    let entry = this.entries.get(el);
+    let entry = this.#entries.get(el);
     let changed = false;
     if (!entry) {
       entry = { id: nextId++, transform: new DOMMatrix(), clip: null, rule: null, sheet: null, css: '', authored: null, applied: null };
-      this.entries.set(el, entry);
+      this.#entries.set(el, entry);
       managed.set(el, this);
       el.setAttribute(GEOMETRY_ATTR, String(entry.id));
       changed = true;
@@ -140,13 +139,13 @@ export class Geometry {
       entry.clip = update.clip;
       changed = true;
     }
-    const index = this.stack.indexOf(el);
+    const index = this.#stack.indexOf(el);
     if (index < 0) {
-      this.stack.push(el);
+      this.#stack.push(el);
       changed = true;
-    } else if (!update.preserveHitTestOrder && index !== this.stack.length - 1) {
-      this.stack.splice(index, 1);
-      this.stack.push(el);
+    } else if (!update.preserveHitTestOrder && index !== this.#stack.length - 1) {
+      this.#stack.splice(index, 1);
+      this.#stack.push(el);
       changed = true;
     }
     if (changed) this.invalidate();
@@ -154,7 +153,7 @@ export class Geometry {
 
   /** Runs `read` with `el`'s overlay rule switched off, so styles read as authored. */
   authored<T>(el: Element, read: () => T): T {
-    const rule = this.entries.get(el)?.rule;
+    const rule = this.#entries.get(el)?.rule;
     if (!rule) return read();
     const css = rule.style.cssText;
     rule.style.cssText = '';
@@ -166,51 +165,51 @@ export class Geometry {
   }
 
   clear(el: Element): void {
-    if (!this.entries.has(el)) return;
-    this.drop(el);
+    if (!this.#entries.has(el)) return;
+    this.#drop(el);
     // Descendants compensate for this element's transform.
     this.invalidate();
   }
 
   /** Recomputes every rule (layout may have moved the live boxes). */
   invalidate(): void {
-    if (this.dirty || this.entries.size === 0) return;
-    this.dirty = true;
+    if (this.#dirty || this.#entries.size === 0) return;
+    this.#dirty = true;
     pending.add(this);
     queueMicrotask(flushGeometry);
   }
 
   /** Declarations that restore authored values in snapshots of `el`. */
   authoredStyle(el: Element): Array<[string, string]> | undefined {
-    const authored = this.entries.get(el)?.authored;
+    const authored = this.#entries.get(el)?.authored;
     return authored ? [['clip-path', authored.clipPath]] : undefined;
   }
 
   flush(): void {
     pending.delete(this);
-    this.dirty = false;
-    for (const el of Array.from(this.entries.keys())) {
-      if (!el.isConnected || !this.owner.owns(el)) this.drop(el);
+    this.#dirty = false;
+    for (const el of Array.from(this.#entries.keys())) {
+      if (!el.isConnected || !this.#owner.owns(el)) this.#drop(el);
     }
-    if (this.entries.size === 0) return;
-    for (const [el, entry] of this.entries) {
+    if (this.#entries.size === 0) return;
+    for (const [el, entry] of this.#entries) {
       if (entry.authored) continue;
       const cs = computedStyle(el);
       entry.authored = { position: cs.position, clipPath: cs.clipPath || 'none' };
     }
-    const origin = this.owner.contentOrigin();
+    const origin = this.#owner.contentOrigin();
     const toHost = new DOMMatrix().translate(-origin.x, -origin.y);
     // Ancestors first: descendants compensate for their transforms.
-    for (const el of reverseTreeOrder(this.entries.keys()).reverse()) {
-      const entry = this.entries.get(el)!;
-      const x = this.cssTransform(el, toHost.multiply(entry.transform));
+    for (const el of reverseTreeOrder(this.#entries.keys()).reverse()) {
+      const entry = this.#entries.get(el)!;
+      const x = this.#cssTransform(el, toHost.multiply(entry.transform));
       // Transform properties the page locked inline can't be overridden, so the
       // overlay is expressed through the others; when it can't be, the element
       // is not hit rather than hit in the wrong place.
       const overlay = isFiniteMatrix(x) ? overlayTransform(x, lockedTransform(el)) : null;
       let css = 'pointer-events:none!important;';
       if (overlay) {
-        css = `${overlay}transform-origin:0 0!important;z-index:${this.stack.indexOf(el) + 1}!important;`;
+        css = `${overlay}transform-origin:0 0!important;z-index:${this.#stack.indexOf(el) + 1}!important;`;
         // z-index needs a positioned box; relative with no offsets does not move it.
         if (entry.authored!.position === 'static') css += 'position:relative!important;inset:auto!important;';
         if (entry.clip) css += `clip-path:${cssClip(entry.clip)}!important;`;
@@ -218,13 +217,13 @@ export class Geometry {
       } else {
         entry.applied = null;
       }
-      if (css !== entry.css) this.write(el, entry, css);
+      if (css !== entry.css) this.#write(el, entry, css);
     }
   }
 
   destroy(): void {
     pending.delete(this);
-    for (const el of Array.from(this.entries.keys())) this.drop(el);
+    for (const el of Array.from(this.#entries.keys())) this.#drop(el);
   }
 
   /**
@@ -232,28 +231,28 @@ export class Geometry {
    * `target`, a map into host coordinates. Transformed ancestors inside the
    * host are compensated for.
    */
-  private cssTransform(el: Element, target: DOMMatrix): DOMMatrix {
-    const host = this.owner.host;
+  #cssTransform(el: Element, target: DOMMatrix): DOMMatrix {
+    const host = this.#owner.host;
     const ancestors: Element[] = [];
     for (let n = composedParent(el); n && n !== host; n = composedParent(n)) {
       if (isElement(n)) ancestors.push(n);
     }
     let chain = new DOMMatrix();
     for (const a of ancestors.reverse()) {
-      const entry = this.entries.get(a);
+      const entry = this.#entries.get(a);
       const he = a as HTMLElement;
       const t = entry ? entry.applied : localTransform(computedStyle(a), he.offsetWidth ?? 0, he.offsetHeight ?? 0);
       if (!t) continue;
-      const p = this.offset(a);
+      const p = this.#offset(a);
       chain = chain.translate(p.x, p.y).multiply(t).translate(-p.x, -p.y);
     }
-    const p = this.offset(el);
+    const p = this.#offset(el);
     return new DOMMatrix().translate(-p.x, -p.y).multiply(chain.inverse()).multiply(target);
   }
 
   /** The element's layout position in host coordinates, ignoring transforms. */
-  private offset(el: Element): { x: number; y: number } {
-    const host = this.owner.host;
+  #offset(el: Element): { x: number; y: number } {
+    const host = this.#owner.host;
     let x = 0;
     let y = 0;
     let n = el as HTMLElement | null;
@@ -284,11 +283,11 @@ export class Geometry {
     return { x: r.left - h.left, y: r.top - h.top };
   }
 
-  private write(el: Element, entry: Entry, css: string): void {
-    const sheet = this.owner.sheetFor(el.getRootNode());
+  #write(el: Element, entry: Entry, css: string): void {
+    const sheet = this.#owner.sheetFor(el.getRootNode());
     if (!sheet) return;
     if (entry.sheet !== sheet) {
-      this.deleteRule(entry);
+      this.#deleteRule(entry);
       sheet.insertRule(`[${GEOMETRY_ATTR}="${entry.id}"]{}`, sheet.cssRules.length);
       entry.rule = sheet.cssRules[sheet.cssRules.length - 1] as CSSStyleRule;
       entry.sheet = sheet;
@@ -297,7 +296,7 @@ export class Geometry {
     entry.css = css;
   }
 
-  private deleteRule(entry: Entry): void {
+  #deleteRule(entry: Entry): void {
     if (entry.sheet && entry.rule) {
       const index = Array.prototype.indexOf.call(entry.sheet.cssRules, entry.rule);
       if (index >= 0) entry.sheet.deleteRule(index);
@@ -307,13 +306,13 @@ export class Geometry {
     entry.css = '';
   }
 
-  private drop(el: Element): void {
-    const entry = this.entries.get(el);
+  #drop(el: Element): void {
+    const entry = this.#entries.get(el);
     if (!entry) return;
-    this.deleteRule(entry);
-    this.entries.delete(el);
+    this.#deleteRule(entry);
+    this.#entries.delete(el);
     managed.delete(el);
-    this.stack = this.stack.filter((e) => e !== el);
+    this.#stack = this.#stack.filter((e) => e !== el);
     if (el.getAttribute(GEOMETRY_ATTR) === String(entry.id)) el.removeAttribute(GEOMETRY_ATTR);
   }
 }

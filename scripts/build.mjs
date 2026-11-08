@@ -8,7 +8,9 @@ const { version } = JSON.parse(await readFile('package.json', 'utf8'));
 
 const common = {
   bundle: true,
-  target: 'es2020',
+  // The polyfill already needs ES2022 built-ins (Object.hasOwn). Below es2022,
+  // esbuild rewrites class fields into helper calls and keeps #private names long.
+  target: 'es2022',
   sourcemap: true,
   legalComments: 'none',
   logLevel: 'warning',

@@ -7,7 +7,8 @@ const entries = [
   // 20.5 KB: :hover analysis that skips snapshots pointer moves can't change (about 0.95 KB).
   // 21 KB: batched paints, cached authored styles and ElementImage canvas checks (about 0.3 KB together).
   // 24 KB: incremental snapshots (about 2.2 KB with the layout re-read rules and the idle re-check; docs/INCREMENTAL.md). The cap for now is 25 KB.
-  { entry: 'src/index.ts', budget: Number(process.env.SIZE_BUDGET_KB ?? 24) },
+  // 23 KB: an es2022 target, #private class members and unused code removed (23.46 → 22.58 KB).
+  { entry: 'src/index.ts', budget: Number(process.env.SIZE_BUDGET_KB ?? 23) },
   { entry: 'src/worker.ts', budget: Number(process.env.WORKER_SIZE_BUDGET_KB ?? 4) },
 ];
 
@@ -18,7 +19,7 @@ for (const { entry, budget } of entries) {
     bundle: true,
     minify: true,
     format: 'esm',
-    target: 'es2020',
+    target: 'es2022',
     write: false,
     define: { __HIC_VERSION__: '"0.0.0"' },
   });

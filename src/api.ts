@@ -1,4 +1,5 @@
 import { drawElementImage, gpuRecordFor, recordFor } from './contexts/2d.js';
+import { notSource } from './contexts/draw.js';
 import { texElementSubImage2DWith } from './contexts/webgl.js';
 import { drawElementImageToTextureWith } from './contexts/webgpu.js';
 import { define, method, restoreAll } from './define.js';
@@ -9,6 +10,7 @@ import { flushGeometry, type Geometry, geometryOf, type GeometryUpdate } from '.
 import { autoCanvasOf, type CanvasState, nearestState } from './host/canvas-state.js';
 import { CanvasPaintEvent, ElementGeometryUpdateEvent } from './paint/event.js';
 import { getState, observeRoot, syncCanvas } from './runtime.js';
+import type { SnapshotRecord } from './snapshot/record.js';
 import { patchMessaging } from './transfer.js';
 
 /** An `on<type>` IDL event handler attribute. */
@@ -33,12 +35,12 @@ function eventHandler(target: object, type: string): void {
   });
 }
 
+/** The default draw size of a snapshot, in canvas grid pixels. */
+const defaultSize = (record: SnapshotRecord) => ({ width: record.defaultWidth, height: record.defaultHeight });
+
 function sizeOf(canvas: HTMLCanvasElement, source: unknown): { width: number; height: number } {
-  if (source instanceof ElementImage) {
-    const record = imageRecordFor(source, canvas);
-    return { width: record.defaultWidth, height: record.defaultHeight };
-  }
-  if (!isElement(source)) throw new TypeError("The provided value is not of type '(Element or ElementImage)'.");
+  if (source instanceof ElementImage) return defaultSize(imageRecordFor(source, canvas));
+  if (!isElement(source)) throw notSource();
   const state = nearestState(source);
   if (!state || state.canvas !== canvas) {
     throw invalidState('The element is not a descendant of this <canvas>.');
@@ -50,7 +52,7 @@ function sizeOf(canvas: HTMLCanvasElement, source: unknown): { width: number; he
 
 function sourceElement(source: unknown): Element {
   const element = source instanceof ElementImage ? elementImageRecord(source).element : source;
-  if (!isElement(element)) throw new TypeError("The provided value is not of type '(Element or ElementImage)'.");
+  if (!isElement(element)) throw notSource();
   return element;
 }
 
@@ -76,7 +78,7 @@ function geometryTarget(canvas: HTMLCanvasElement, source: unknown): { state: Ca
 function geometryOptions(options: unknown): GeometryUpdate {
   if (options === undefined || options === null) return {};
   if (typeof options !== 'object' && typeof options !== 'function') {
-    throw new TypeError("The provided value is not of type 'UpdateElementGeometryOptions'.");
+    throw notSource('UpdateElementGeometryOptions');
   }
   const o = options as { canvasTransform?: DOMMatrixInit; canvasClip?: DOMRectInit; preserveHitTestOrder?: unknown };
   const update: GeometryUpdate = { preserveHitTestOrder: Boolean(o.preserveHitTestOrder) };
@@ -121,7 +123,7 @@ export function patch(): void {
     getState(this)?.requestPaint();
   });
   method(canvasProto, 'captureElementImage', function (this: HTMLCanvasElement, element: Element) {
-    if (element instanceof ElementImage) throw new TypeError("The provided value is not of type 'Element'.");
+    if (element instanceof ElementImage) throw notSource('Element');
     return createElementImage(recordFor(this, element), this);
   });
   method(canvasProto, 'getElementImageDefaultSize', function (this: HTMLCanvasElement, source: unknown) {
@@ -137,7 +139,7 @@ export function patch(): void {
     state.geometry.clear(element);
   });
   method(canvasProto, 'getElementTransform', function (this: HTMLCanvasElement, element: unknown) {
-    if (!isElement(element)) throw new TypeError("The provided value is not of type 'Element'.");
+    if (!isElement(element)) throw notSource('Element');
     const state = nearestState(element);
     return state && state.canvas === this ? state.geometry.transformOf(element) : new DOMMatrix();
   });
@@ -167,31 +169,23 @@ export function patch(): void {
   patchMessaging();
   if (typeof OffscreenCanvas !== 'undefined') {
     method(OffscreenCanvas.prototype, 'getElementImageDefaultSize', function (this: OffscreenCanvas, source: unknown) {
-      if (!(source instanceof ElementImage)) throw new TypeError("The provided value is not of type 'ElementImage'.");
-      const record = imageRecordFor(source, placeholderOf(this), 'The ElementImage was captured from a different canvas.');
-      return { width: record.defaultWidth, height: record.defaultHeight };
+      if (!(source instanceof ElementImage)) throw notSource('ElementImage');
+      return defaultSize(imageRecordFor(source, placeholderOf(this), 'The ElementImage was captured from a different canvas.'));
     });
     // Without a placeholder canvas on this thread there is nothing to update.
-    method(OffscreenCanvas.prototype, 'updateElementGeometry', function (this: OffscreenCanvas, source: unknown, options?: unknown) {
-      const update = geometryOptions(options);
-      const element = sourceElement(source);
-      const canvas = placeholderOf(this);
-      if (canvas) queueOffscreenGeometry({ canvas, element, update });
-    });
-    method(OffscreenCanvas.prototype, 'clearElementGeometry', function (this: OffscreenCanvas, source: unknown) {
-      const element = sourceElement(source);
-      const canvas = placeholderOf(this);
-      if (canvas) queueOffscreenGeometry({ canvas, element, update: null });
-    });
+    for (const clear of [false, true]) {
+      method(OffscreenCanvas.prototype, clear ? 'clearElementGeometry' : 'updateElementGeometry', function (this: OffscreenCanvas, source: unknown, options: unknown = undefined) {
+        const update = clear ? null : geometryOptions(options);
+        const element = sourceElement(source);
+        const canvas = placeholderOf(this);
+        if (canvas) queueOffscreenGeometry({ canvas, element, update });
+      });
+    }
   }
 
   const g = globalThis as Record<string, unknown>;
-  if (!('ElementImage' in g)) define(g, 'ElementImage', { value: ElementImage, writable: true, enumerable: false });
-  if (!('CanvasPaintEvent' in g)) {
-    define(g, 'CanvasPaintEvent', { value: CanvasPaintEvent, writable: true, enumerable: false });
-  }
-  if (!('ElementGeometryUpdateEvent' in g)) {
-    define(g, 'ElementGeometryUpdateEvent', { value: ElementGeometryUpdateEvent, writable: true, enumerable: false });
+  for (const [name, value] of Object.entries({ ElementImage, CanvasPaintEvent, ElementGeometryUpdateEvent })) {
+    if (!(name in g)) define(g, name, { value, writable: true, enumerable: false });
   }
 
   // Geometry is applied in a microtask; synchronous hit tests and box reads see it too.

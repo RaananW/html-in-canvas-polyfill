@@ -33,6 +33,42 @@ export interface Encoded {
 }
 
 /**
+ * Maps `value` through plain objects, arrays, Maps and Sets, replacing each
+ * object `swap` returns something for. Cycles and shared references are
+ * kept. Other objects (typed arrays, buffers, platform objects, Dates, …) are
+ * kept as they are. In place, containers are updated rather than copied.
+ */
+function mapDeep(value: unknown, swap: (value: object) => unknown, inPlace: boolean): unknown {
+  const done = new Map<object, unknown>();
+  const walk = (value: unknown): unknown => {
+    if (typeof value !== 'object' || value === null) return value;
+    if (done.has(value)) return done.get(value);
+    let out = swap(value);
+    if (out !== undefined) {
+      done.set(value, out);
+    } else if (value instanceof Map || value instanceof Set) {
+      const entries = [...value.entries()];
+      const map = inPlace ? value : value instanceof Map ? new Map<unknown, unknown>() : new Set<unknown>();
+      done.set(value, (out = map));
+      map.clear();
+      for (const [k, v] of entries) {
+        if (map instanceof Map) map.set(walk(k), walk(v));
+        else map.add(walk(k));
+      }
+    } else if (Array.isArray(value) || isRecordLike(value)) {
+      const from = value as Record<string, unknown>;
+      const to: Record<string, unknown> = inPlace ? from : Array.isArray(value) ? (new Array(value.length) as never) : {};
+      done.set(value, (out = to));
+      for (const key of Object.keys(from)) to[key] = walk(from[key]);
+    } else {
+      out = value;
+    }
+    return out;
+  };
+  return walk(value);
+}
+
+/**
  * Replaces each ElementImage in `message` with an envelope, copying the
  * objects, arrays, Maps and Sets on the way, and drops ElementImages from the
  * transfer list. Returns null when the transfer list has no ElementImage: an
@@ -48,36 +84,16 @@ export function encode(message: unknown, transfer: readonly unknown[]): Encoded 
     else if (!openRecord(item)) throw cloneError('An ElementImage is closed and could not be cloned.');
     else images.add(item);
   });
-  const copies = new Map<object, unknown>();
-  const walk = (value: unknown): unknown => {
-    if (typeof value !== 'object' || value === null) return value;
-    let copy = copies.get(value);
-    if (copy !== undefined) return copy;
-    if (value instanceof ElementImage) {
+  const out = mapDeep(
+    message,
+    (value) => {
+      if (!(value instanceof ElementImage)) return undefined;
       const record = images.has(value) ? openRecord(value) : null;
       if (!record) throw cloneError('An ElementImage could not be cloned.');
-      copy = envelope(record);
-      copies.set(value, copy);
-    } else if (value instanceof Map || value instanceof Set) {
-      const out = value instanceof Map ? new Map<unknown, unknown>() : new Set<unknown>();
-      copies.set(value, out);
-      for (const [k, v] of value.entries()) {
-        if (out instanceof Map) out.set(walk(k), walk(v));
-        else out.add(walk(k));
-      }
-      copy = out;
-    } else if (Array.isArray(value) || isRecordLike(value)) {
-      const out: Record<string, unknown> = Array.isArray(value) ? (new Array(value.length) as never) : {};
-      copies.set(value, out);
-      for (const key of Object.keys(value)) out[key] = walk((value as Record<string, unknown>)[key]);
-      copy = out;
-    } else {
-      // Typed arrays, buffers, platform objects, Dates, …: cloned as they are.
-      return value;
-    }
-    return copy;
-  };
-  const out = walk(message);
+      return envelope(record);
+    },
+    false,
+  );
   // A top-level Map or Set can't carry the flag; receivers walk those anyway.
   if (out !== message && typeof out === 'object' && !(out instanceof Map || out instanceof Set)) {
     const top = out as Record<string, unknown>;
@@ -97,80 +113,36 @@ function isEnvelope(value: Record<string, unknown>): value is Envelope & Record<
 }
 
 /**
- * Revives a received message: only messages encode() flagged, or that are
- * envelopes, Maps or Sets, are walked. Everything else is returned as is.
+ * Revives a received message in place, replacing its envelopes with
+ * ElementImages. Only messages encode() flagged, or that are envelopes, Maps
+ * or Sets, are walked; everything else is returned as is. Deserialized data
+ * only holds plain objects, arrays, Maps, Sets and platform objects.
  */
 export function reviveMessage(data: unknown): unknown {
   if (typeof data !== 'object' || data === null) return data;
   const flag = (data as Record<string, unknown>)[MARKER];
   if (flag === CARRIES) delete (data as Record<string, unknown>)[MARKER];
   else if (flag !== 1 && !(data instanceof Map || data instanceof Set)) return data;
-  return revive(data);
-}
-
-/**
- * Replaces envelopes in freshly deserialized data with ElementImages, in
- * place. Deserialized data only holds plain objects, arrays, Maps, Sets and
- * platform objects.
- */
-export function revive(data: unknown): unknown {
-  const seen = new Map<object, unknown>();
   // Images of the same snapshot arrive with the same bitmap, so they share a record.
   const shared = new Map<ImageBitmap, SnapshotRecord>();
-  const fromEnvelope = (e: Envelope): ElementImage => {
-    let record = e.bitmap && shared.get(e.bitmap);
-    if (!record) {
-      const scaleX = e.cssWidth ? e.defaultWidth / e.cssWidth : 0;
-      const scaleY = e.cssHeight ? e.defaultHeight / e.cssHeight : 0;
-      record = new SnapshotRecord(e, scaleX, scaleY, null);
-      if (e.bitmap) shared.set(e.bitmap, record);
-      created.push(record);
-    }
-    return createElementImage(record);
-  };
   const created: SnapshotRecord[] = [];
-  const walk = (value: unknown): unknown => {
-    if (typeof value !== 'object' || value === null || ArrayBuffer.isView(value)) return value;
-    if (seen.has(value)) return seen.get(value);
-    if (Array.isArray(value)) {
-      seen.set(value, value);
-      for (let i = 0; i < value.length; i++) {
-        const item: unknown = value[i];
-        if (typeof item === 'object' && item !== null) {
-          const next = walk(item);
-          if (next !== item) value[i] = next;
-        }
+  const result = mapDeep(
+    data,
+    (value) => {
+      const e = value as Envelope & Record<string, unknown>;
+      if (!isRecordLike(value) || !isEnvelope(e)) return undefined;
+      let record = e.bitmap && shared.get(e.bitmap);
+      if (!record) {
+        const scaleX = e.cssWidth ? e.defaultWidth / e.cssWidth : 0;
+        const scaleY = e.cssHeight ? e.defaultHeight / e.cssHeight : 0;
+        record = new SnapshotRecord(e, scaleX, scaleY, null);
+        if (e.bitmap) shared.set(e.bitmap, record);
+        created.push(record);
       }
-    } else if (Object.getPrototypeOf(value) === Object.prototype) {
-      const record = value as Record<string, unknown>;
-      if (isEnvelope(record)) {
-        const image = fromEnvelope(record);
-        seen.set(value, image);
-        return image;
-      }
-      seen.set(value, value);
-      for (const key in record) {
-        const item = record[key];
-        if (typeof item === 'object' && item !== null) {
-          const next = walk(item);
-          if (next !== item) record[key] = next;
-        }
-      }
-    } else if (value instanceof Map || value instanceof Set) {
-      seen.set(value, value);
-      const entries = [...value.entries()] as [unknown, unknown][];
-      const next = entries.map(([k, v]) => [walk(k), walk(v)] as const);
-      if (next.some(([k, v], i) => k !== entries[i]![0] || v !== entries[i]![1])) {
-        value.clear();
-        for (const [k, v] of next) {
-          if (value instanceof Map) value.set(k, v);
-          else value.add(k);
-        }
-      }
-    }
-    return value;
-  };
-  const result = walk(data);
+      return createElementImage(record);
+    },
+    true,
+  );
   // Only the images hold references now: closing the last one closes the bitmap.
   for (const record of created) record.release();
   return result;
