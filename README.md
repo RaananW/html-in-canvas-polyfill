@@ -58,9 +58,24 @@ testing.
 ```
 
 An `ElementImage` from `captureElementImage()` can be transferred to a worker
-with `postMessage(message, [image])`, as natively. The worker needs the
-polyfill's worker entry to receive it and to draw or upload it; it does
-nothing where the browser supports the API natively:
+with `postMessage(message, [image])`, as natively. Two imports make that work
+in the polyfill, and both do nothing where the browser supports the API
+natively.
+
+The page needs the messaging entry. It wraps `postMessage`,
+`structuredClone` and `MessageEvent.data`, and adds about 1.1 KB min+gzip, so
+the main entry leaves it out. `/auto` and the `<script>` build include it.
+Without it, transferring an `ElementImage` throws `DataCloneError`:
+
+```js
+import { install } from '@underglass/html-in-canvas-polyfill';
+import '@underglass/html-in-canvas-polyfill/messaging';
+
+install();
+```
+
+The worker needs the worker entry, to receive images and to draw or upload
+them:
 
 ```js
 // In a module worker. Classic workers: importScripts('…/html-in-canvas-polyfill.worker.iife.js').

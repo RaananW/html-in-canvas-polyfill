@@ -21,7 +21,7 @@ const common = {
 await Promise.all([
   build({
     ...common,
-    entryPoints: { index: 'src/index.ts', auto: 'src/auto.ts', worker: 'src/worker.ts' },
+    entryPoints: { index: 'src/index.ts', auto: 'src/auto.ts', messaging: 'src/messaging.ts', worker: 'src/worker.ts' },
     format: 'esm',
     splitting: true,
     outdir: 'dist',

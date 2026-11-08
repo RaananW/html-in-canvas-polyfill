@@ -42,7 +42,7 @@ canvas.
 The polyfill's `ElementImage` is a script object, so structured clone would
 copy it as `{}` and lose its snapshot.
 
-- **Sending.** The main entry and the worker entry wrap `postMessage` on
+- **Sending.** The messaging entry (on the page) and the worker entry wrap `postMessage` on
   `Worker`, `MessagePort`, `ServiceWorker`, `Client`, the window and the
   worker global (the last two are own properties of the global), and
   `structuredClone`. When the transfer list holds an `ElementImage`, the
@@ -71,6 +71,13 @@ copy it as `{}` and lose its snapshot.
   (`texElementSubImage2DWith`, `drawElementImageToTextureWith`): the main
   thread's resolves elements and images, the worker's only images.
   `rasterize` uses an `OffscreenCanvas` where there is no `document`.
+- **The messaging entry** (`@underglass/html-in-canvas-polyfill/messaging`)
+  holds the page side, so pages that never post an `ElementImage` don't load
+  it. It registers with the main entry (`src/extensions.ts`): its wrappers
+  are applied by `install()`, or at once when it's imported after it, and
+  `uninstall()` removes them. `/auto` and the script-tag build register it
+  themselves. Without it, the transfer list holds a plain object, and posting
+  throws `DataCloneError` in every browser.
 - **The worker entry** (`@underglass/html-in-canvas-polyfill/worker`, or
   `html-in-canvas-polyfill.worker.iife.js` for classic workers) installs
   this. It does nothing in a worker with native support, and `install({
@@ -102,6 +109,8 @@ worker ran in polyfilled Chromium, Chromium 156 and Canary 159.
 
 What doesn't, or differs:
 
+- **The page must import the messaging entry** (or use `/auto` or the script
+  tag). Natively it needs nothing.
 - **The worker must import the worker entry.** Natively it needs nothing.
   Without it, it receives envelopes. Underglass's worker would reject them
   (`validateWorkerFrame` requires `image.close`), which fails loudly rather
