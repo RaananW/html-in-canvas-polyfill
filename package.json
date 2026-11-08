@@ -19,6 +19,7 @@
   ],
   "sideEffects": [
     "./dist/auto.js",
+    "./dist/messaging.js",
     "./dist/worker.js",
     "./dist/html-in-canvas-polyfill.iife.js",
     "./dist/html-in-canvas-polyfill.worker.iife.js"
@@ -38,6 +39,10 @@
     "./iife": {
       "types": "./dist/types/iife.d.ts",
       "default": "./dist/html-in-canvas-polyfill.iife.js"
+    },
+    "./messaging": {
+      "types": "./dist/types/messaging.d.ts",
+      "default": "./dist/messaging.js"
     },
     "./worker": {
       "types": "./dist/types/worker.d.ts",

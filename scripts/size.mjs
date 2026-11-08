@@ -8,7 +8,12 @@ const entries = [
   // 21 KB: batched paints, cached authored styles and ElementImage canvas checks (about 0.3 KB together).
   // 24 KB: incremental snapshots (about 2.2 KB with the layout re-read rules and the idle re-check; docs/INCREMENTAL.md). The cap for now is 25 KB.
   // 23 KB: an es2022 target, #private class members and unused code removed (23.46 → 22.58 KB).
-  { entry: 'src/index.ts', budget: Number(process.env.SIZE_BUDGET_KB ?? 23) },
+  // 22 KB: the worker messaging wrappers moved to ./messaging (22.58 → 21.59 KB).
+  { entry: 'src/index.ts', budget: Number(process.env.SIZE_BUDGET_KB ?? 22) },
+  // Everything: the main entry with messaging, as ./auto and the script-tag build ship it.
+  { entry: 'src/auto.ts', budget: Number(process.env.AUTO_SIZE_BUDGET_KB ?? 23) },
+  // On its own; on top of the main entry it adds about 1.1 KB, the rest is shared.
+  { entry: 'src/messaging.ts', budget: Number(process.env.MESSAGING_SIZE_BUDGET_KB ?? 2) },
   { entry: 'src/worker.ts', budget: Number(process.env.WORKER_SIZE_BUDGET_KB ?? 4) },
 ];
 

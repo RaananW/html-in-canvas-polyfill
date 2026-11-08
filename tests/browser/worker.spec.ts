@@ -4,7 +4,8 @@ import { load } from './helpers';
 // ElementImage in workers. Runs against native Chromium (project "native",
 // and "canary" when it's installed) and the polyfill in every other project.
 // Expectations are the native behavior. The native worker imports nothing;
-// the polyfilled one imports the polyfill's worker entry.
+// the polyfilled one imports the polyfill's worker entry, and the page its
+// messaging entry.
 
 /** 40×20 CSS px quadrants (red, lime / blue, white) at grid scale 2, in two canvases. */
 const QUADS = `<div drawable style="width:40px;height:20px;display:grid;grid-template:1fr 1fr / 1fr 1fr">
@@ -88,7 +89,7 @@ async function startWorker(page: Page, polyfilled: boolean): Promise<void> {
 
 test.beforeEach(async ({ page }, info) => {
   const native = info.project.name === 'native' || info.project.name === 'canary';
-  await load(page, native);
+  await load(page, native, 'messaging');
   await page.evaluate(async (html) => {
     document.body.innerHTML = html;
     const canvases = [...document.querySelectorAll('canvas')];

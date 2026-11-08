@@ -4,6 +4,7 @@ import { texElementSubImage2DWith } from './contexts/webgl.js';
 import { drawElementImageToTextureWith } from './contexts/webgpu.js';
 import { define, method, restoreAll } from './define.js';
 import { HOST_ATTR, invalidState, isElement } from './dom.js';
+import { applyExtensions, pauseExtensions } from './extensions.js';
 import { createElementImage, ElementImage, elementImageRecord, imageRecordFor } from './element-image.js';
 import { linkPlaceholder, placeholderOf, queueOffscreenGeometry } from './geometry/offscreen.js';
 import { flushGeometry, type Geometry, geometryOf, type GeometryUpdate } from './geometry/state.js';
@@ -11,7 +12,6 @@ import { autoCanvasOf, type CanvasState, nearestState } from './host/canvas-stat
 import { CanvasPaintEvent, ElementGeometryUpdateEvent } from './paint/event.js';
 import { getState, observeRoot, syncCanvas } from './runtime.js';
 import type { SnapshotRecord } from './snapshot/record.js';
-import { patchMessaging } from './transfer.js';
 
 /** An `on<type>` IDL event handler attribute. */
 function eventHandler(target: object, type: string): void {
@@ -166,7 +166,8 @@ export function patch(): void {
   if (typeof GPUQueue !== 'undefined') {
     method(GPUQueue.prototype, 'drawElementImageToTexture', drawElementImageToTextureWith(gpuRecordFor));
   }
-  patchMessaging();
+  // Features imported from their own entry points (./messaging).
+  applyExtensions();
   if (typeof OffscreenCanvas !== 'undefined') {
     method(OffscreenCanvas.prototype, 'getElementImageDefaultSize', function (this: OffscreenCanvas, source: unknown) {
       if (!(source instanceof ElementImage)) throw notSource('ElementImage');
@@ -281,5 +282,6 @@ function authoredValue(geometry: Geometry, element: Element, style: CSSStyleDecl
 }
 
 export function unpatch(): void {
+  pauseExtensions();
   restoreAll();
 }

@@ -59,7 +59,7 @@ const BASE_LIMITATIONS = [
   'Hit testing uses CSS transforms and clip-path on the live elements; ancestor clips and perspective are not undone.',
   'Events from drawn elements bubble through the sibling host, not through the canvas.',
   'WebGL texElementSubImage2D uploads RGBA/UNSIGNED_BYTE data, so it needs an RGBA8 or SRGB8_ALPHA8 texture.',
-  'Workers that receive element images must import @underglass/html-in-canvas-polyfill/worker; geometry updates from a worker do not reach the main thread.',
+  'Sending element images to workers needs @underglass/html-in-canvas-polyfill/messaging on the page (./auto and the script-tag build include it) and /worker in the worker; geometry updates from a worker do not reach the main thread.',
 ];
 
 let installed = false;

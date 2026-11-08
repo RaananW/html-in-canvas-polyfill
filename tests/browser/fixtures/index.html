@@ -10,7 +10,11 @@
   const params = new URLSearchParams(location.search);
   const force = params.has('force');
   window.__polyfill = polyfill;
+  // `?messaging` imports the messaging entry before install, `?messaging=late` after.
+  const messaging = params.get('messaging');
+  if (messaging === '') await import('/dist/messaging.js');
   // `?full` reads every element in full (incremental snapshots off).
   window.__status = polyfill.install({ force, incremental: !params.has('full') });
+  if (messaging === 'late') await import('/dist/messaging.js');
   window.__ready = true;
 </script>

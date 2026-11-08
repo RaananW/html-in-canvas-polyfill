@@ -1,9 +1,10 @@
 /// <reference types="node" />
 import { expect, type Page } from '@playwright/test';
 
-/** Loads the fixture, forcing the polyfill unless running against native Chromium. */
-export async function load(page: Page, native: boolean): Promise<void> {
-  await page.goto(native ? '/tests/browser/fixtures/index.html' : '/tests/browser/fixtures/index.html?force');
+/** Loads the fixture, forcing the polyfill unless running against native Chromium. `query` adds fixture options (`messaging`, `full`). */
+export async function load(page: Page, native: boolean, query = ''): Promise<void> {
+  const params = [native ? '' : 'force', query].filter(Boolean).join('&');
+  await page.goto(`/tests/browser/fixtures/index.html${params ? `?${params}` : ''}`);
   await page.waitForFunction(() => (window as unknown as { __ready?: boolean }).__ready);
   const status = await page.evaluate(() => (window as unknown as { __status: { native: boolean; polyfilled: boolean } }).__status);
   expect(status.polyfilled).toBe(!native);
