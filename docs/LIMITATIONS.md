@@ -85,6 +85,16 @@ explainer says it should. As natively, `getComputedStyle()` doesn't: it
 reports the authored `transform`, `z-index`, `position`, `clip-path`,
 `pointer-events` and related properties of elements with geometry.
 
+No stylesheet can override a declaration the page sets inline with
+`!important`. When the page locks `transform` that way (Underglass does on its
+layers, for example), the polyfill places the element with the individual
+`translate`, `rotate` and `scale` properties instead. That covers any 2D
+geometry without skew. When the page also locks one of those properties, or
+the geometry is 3D or skewed, the element is not hit-testable
+rather than hit in the wrong place. Locked `translate`, `rotate`, `scale` and
+`transform-origin` are taken into account. The page's own inline declarations
+are never changed.
+
 Native Chromium 156 doesn't follow the explainer yet. It expects
 `getElementTransform(element, drawTransform)`, doesn't move hit regions for
 `canvasTransform`, and ignores `canvasClip`. The polyfill's geometry tests

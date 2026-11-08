@@ -1,5 +1,15 @@
 import { composedParent, computedStyle, isElement, reverseTreeOrder } from '../dom.js';
-import { cssClip, cssMatrix, isFiniteMatrix, localTransform } from './matrix.js';
+import {
+  cssClip,
+  isFiniteMatrix,
+  localTransform,
+  originOf,
+  overlayTransform,
+  rotateMatrix,
+  scaleMatrix,
+  translateMatrix,
+  type LockedTransform,
+} from './matrix.js';
 
 /** Marks elements with geometry; the value keys their overlay rule. */
 export const GEOMETRY_ATTR = 'data-hic-g';
@@ -64,6 +74,30 @@ const sameMatrix = (a: DOMMatrixReadOnly, b: DOMMatrixReadOnly) => {
 
 const sameRect = (a: DOMRectReadOnly | null, b: DOMRectReadOnly | null) =>
   a === b || (!!a && !!b && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height);
+
+const LOCKABLE = ['transform-origin', 'transform', 'translate', 'rotate', 'scale'] as const;
+
+/**
+ * The transform properties `el` sets inline with `!important`, which beat the
+ * overlay's stylesheet rule. Frameworks do this, for example to keep a CSS
+ * animation's transform off an element whose canvas draw already moves it.
+ */
+function lockedTransform(el: Element): LockedTransform {
+  const style = (el as Partial<ElementCSSInlineStyle>).style;
+  if (!style || !LOCKABLE.some((name) => style.getPropertyPriority(name) === 'important')) return {};
+  const locked = (name: (typeof LOCKABLE)[number]) => style.getPropertyPriority(name) === 'important';
+  // The locked values win the cascade, so the computed style reads them.
+  const cs = computedStyle(el);
+  const width = (el as HTMLElement).offsetWidth ?? 0;
+  const height = (el as HTMLElement).offsetHeight ?? 0;
+  const result: LockedTransform = {};
+  if (locked('transform-origin')) result.origin = originOf(cs.transformOrigin, width, height);
+  if (locked('transform')) result.transform = cs.transform && cs.transform !== 'none' ? new DOMMatrix(cs.transform) : new DOMMatrix();
+  if (locked('translate')) result.translate = translateMatrix(cs.translate, width, height);
+  if (locked('rotate')) result.rotate = rotateMatrix(cs.rotate);
+  if (locked('scale')) result.scale = scaleMatrix(cs.scale);
+  return result;
+}
 
 /**
  * Element geometry for one canvas. Hit testing works by giving each element
@@ -170,12 +204,13 @@ export class Geometry {
     for (const el of reverseTreeOrder(this.entries.keys()).reverse()) {
       const entry = this.entries.get(el)!;
       const x = this.cssTransform(el, toHost.multiply(entry.transform));
+      // Transform properties the page locked inline can't be overridden, so the
+      // overlay is expressed through the others; when it can't be, the element
+      // is not hit rather than hit in the wrong place.
+      const overlay = isFiniteMatrix(x) ? overlayTransform(x, lockedTransform(el)) : null;
       let css = 'pointer-events:none!important;';
-      if (isFiniteMatrix(x)) {
-        css =
-          `transform:${cssMatrix(x)}!important;transform-origin:0 0!important;` +
-          `translate:none!important;rotate:none!important;scale:none!important;` +
-          `z-index:${this.stack.indexOf(el) + 1}!important;`;
+      if (overlay) {
+        css = `${overlay}transform-origin:0 0!important;z-index:${this.stack.indexOf(el) + 1}!important;`;
         // z-index needs a positioned box; relative with no offsets does not move it.
         if (entry.authored!.position === 'static') css += 'position:relative!important;inset:auto!important;';
         if (entry.clip) css += `clip-path:${cssClip(entry.clip)}!important;`;
