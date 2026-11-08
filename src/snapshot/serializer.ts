@@ -5,6 +5,7 @@
 // behind these choices.
 
 import { computedStyle } from '../dom.js';
+import { GEOMETRY_ATTR } from '../geometry/state.js';
 import { toBitmap } from './bitmap.js';
 import {
   CARET_VAR,
@@ -40,7 +41,7 @@ export interface SnapshotOptions {
  * individual transforms), whose rules change as elements are drawn.
  */
 const LAYOUT = new Set(
-  ['width', 'height', 'inline-size', 'block-size', 'top', 'right', 'bottom', 'left', 'transform', 'transform-origin', 'perspective-origin', 'grid-template-columns', 'grid-template-rows', 'line-height', 'position', 'z-index', 'clip-path', 'translate', 'rotate', 'scale'].concat(
+  ['width', 'height', 'inline-size', 'block-size', 'top', 'right', 'bottom', 'left', 'transform', 'transform-origin', 'perspective-origin', 'grid-template-columns', 'grid-template-rows', 'position', 'z-index', 'clip-path', 'translate', 'rotate', 'scale'].concat(
     ...['margin', 'padding'].map((box) => ['top', 'right', 'bottom', 'left', 'block-start', 'block-end', 'inline-start', 'inline-end'].map((side) => `${box}-${side}`)),
     ['block-start', 'block-end', 'inline-start', 'inline-end'].map((side) => `inset-${side}`),
   ),
@@ -53,6 +54,66 @@ interface StyleEntry {
   defaults: Map<string, string>;
   /** The declarations those values gave, without the layout ones. */
   decls?: Array<[string, string]>;
+  /** The layout values the last snapshot used. */
+  layout?: Map<string, string>;
+}
+
+const SIDES = ['top', 'right', 'bottom', 'left'] as const;
+/** What element geometry overrides on the elements it applies to. */
+const GEOMETRY_OVERRIDES = ['position', 'z-index', 'clip-path', 'translate', 'rotate', 'scale'];
+
+/** Physical sides for the block and inline axes, or null when the writing mode isn't one we map. */
+function logicalSides(writingMode: string, direction: string): { block: [string, string]; inline: [string, string] } | null {
+  const horizontal = writingMode === 'horizontal-tb';
+  if (!horizontal && writingMode !== 'vertical-rl' && writingMode !== 'vertical-lr') return null;
+  const block: [string, string] = horizontal ? ['top', 'bottom'] : writingMode === 'vertical-rl' ? ['right', 'left'] : ['left', 'right'];
+  const inline: [string, string] = horizontal ? ['left', 'right'] : ['top', 'bottom'];
+  if (direction === 'rtl') inline.reverse();
+  return { block, inline };
+}
+
+/**
+ * The layout values of a reused element. Only what can have changed is read:
+ * sizes, margins and padding (percentages and auto follow layout), insets of
+ * positioned elements, transforms and their origins when the box was
+ * resized, grid tracks of grids, and what element geometry overrides on
+ * elements that have it. Logical properties mirror the physical ones.
+ */
+function relayout(el: Element, cs: CSSStyleDeclaration, kept: StyleEntry, defaults: Map<string, string>): Map<string, string> {
+  const last = kept.layout!;
+  const out = new Map(last);
+  const value = (n: string) => kept.values.get(n) ?? defaults.get(n) ?? '';
+  const read = (n: string) => {
+    const v = cs.getPropertyValue(n);
+    out.set(n, v);
+    return v;
+  };
+  const resized = read('width') !== last.get('width') || read('height') !== last.get('height');
+  for (const side of SIDES) {
+    read(`margin-${side}`);
+    read(`padding-${side}`);
+  }
+  const geometry = el.hasAttribute(GEOMETRY_ATTR);
+  if (geometry) for (const n of GEOMETRY_OVERRIDES) read(n);
+  if (geometry || out.get('position') !== 'static') for (const side of SIDES) read(side);
+  if (geometry || resized) for (const n of ['transform', 'transform-origin', 'perspective-origin']) read(n);
+  if (value('display').includes('grid')) for (const n of ['grid-template-columns', 'grid-template-rows']) read(n);
+  const sides = logicalSides(value('writing-mode'), value('direction'));
+  for (const name of layoutNames!) {
+    const m = /^(margin|padding|inset)-(block|inline)-(start|end)$/.exec(name);
+    if (!m && name !== 'inline-size' && name !== 'block-size') continue;
+    if (!sides) {
+      read(name);
+    } else if (m) {
+      const side = sides[m[2] as 'block' | 'inline'][m[3] === 'start' ? 0 : 1];
+      out.set(name, out.get(m[1] === 'inset' ? side : `${m[1]}-${side}`)!);
+    } else {
+      const horizontal = sides.block[0] === 'top';
+      out.set(name, out.get((name === 'inline-size') === horizontal ? 'width' : 'height')!);
+    }
+  }
+  kept.layout = out;
+  return out;
 }
 
 /** Computed values by name. */
@@ -193,15 +254,15 @@ function readStyle(el: Element, pseudo: string | null, ctx: CloneContext): ReadS
   let style: ReadStyle;
   if (kept?.decls && kept.defaults === defaults && !styles.fresh(el)) {
     styles.cache.reused++;
-    const layout = new Map<string, string>();
-    for (const name of (layoutNames ??= standardNames!.html.filter((n) => LAYOUT.has(n)))) layout.set(name, cs.getPropertyValue(name));
+    const layout = relayout(el, cs, kept, defaults);
     style = { get: (n) => layout.get(n) ?? kept.values.get(n) ?? defaults.get(n), map: null, entry: kept };
   } else {
     styles.cache.read++;
     const map = styleToMap(cs, ctx.customProps, false);
     const values = new Map<string, string>();
     for (const [name, value] of map) if (!LAYOUT.has(name) && value !== defaults.get(name)) values.set(name, value);
-    const entry: StyleEntry = { values, defaults };
+    layoutNames ??= standardNames!.html.filter((n) => LAYOUT.has(n));
+    const entry: StyleEntry = { values, defaults, layout: new Map(layoutNames.map((n) => [n, map.get(n)!])) };
     styles.cache.set(el, pseudo, entry);
     style = whole(map, entry);
   }
