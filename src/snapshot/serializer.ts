@@ -111,21 +111,43 @@ function styleToMap(cs: CSSStyleDeclaration, custom: ReadonlySet<string> = EMPTY
 
 const EMPTY: ReadonlySet<string> = new Set();
 
-// UA defaults differ per input type (a checkbox has margins, a text input does not).
-function getDefaultStyle(src: Element, pseudo: string | null): Map<string, string> {
+const LISTS = new Set(['ul', 'ol', 'menu', 'dir']);
+
+// UA defaults differ per input type (a checkbox has margins, a text input does
+// not), and UA rules key on state and context too: a `:disabled` field turns
+// grey, a nested list gets circle markers, and a radio is round only with its
+// native `appearance`. A value the page sets back to the plain default would be
+// left out, and the clone would take the UA's, so the default is read from an
+// element in the same state. Its `appearance` stays the UA's, so a changed one
+// is still written.
+function getDefaultStyle(src: Element, pseudo: string | null, appearance?: string): Map<string, string> {
   const type = src instanceof HTMLInputElement ? src.type : '';
-  const key = `${src.localName}[${type}]${pseudo ?? ''}`;
-  let cached = defaultStyleCache.get(key);
-  if (!cached) {
+  const disabled = src.matches(':disabled');
+  const nested = LISTS.has(src.localName) && !!src.parentElement?.closest('ul,ol,menu,dir');
+  const key = `${src.localName}[${type}]${pseudo ?? ''}${disabled ? ':disabled' : ''}${nested ? '>' : ''}`;
+  const read = (appearance?: string) => {
     const doc = getSandboxDoc();
     const el = doc.createElement(src.localName);
     if (type) el.setAttribute('type', type);
-    doc.body.appendChild(el);
-    cached = styleToMap(doc.defaultView!.getComputedStyle(el, pseudo), EMPTY, src instanceof SVGElement);
-    el.remove();
-    defaultStyleCache.set(key, cached);
+    if (disabled) el.setAttribute('disabled', '');
+    if (appearance) (el as HTMLElement).style.appearance = appearance;
+    const parent = nested ? doc.body.appendChild(doc.createElement('ul')) : doc.body;
+    parent.appendChild(el);
+    const style = styleToMap(doc.defaultView!.getComputedStyle(el, pseudo), EMPTY, src instanceof SVGElement);
+    (nested ? parent : el).remove();
+    return style;
+  };
+  let cached = defaultStyleCache.get(key);
+  if (!cached) defaultStyleCache.set(key, (cached = read()));
+  const ua = cached.get('appearance');
+  if (!appearance || appearance === ua) return cached;
+  let themed = defaultStyleCache.get(`${key}{${appearance}}`);
+  if (!themed) {
+    themed = read(appearance);
+    themed.set('appearance', ua!);
+    defaultStyleCache.set(`${key}{${appearance}}`, themed);
   }
-  return cached;
+  return themed;
 }
 
 function readAsDataUrl(blob: Blob): Promise<string> {
@@ -370,7 +392,7 @@ function cloneNode(
     // Nested drawables have their own snapshots. Keep the box so siblings lay
     // out the same, but paint nothing.
     const he = el as HTMLElement;
-    const decls = diffStyle(csMap, getDefaultStyle(el, null), parentStyle);
+    const decls = diffStyle(csMap, getDefaultStyle(el, null, csMap.get('appearance')), parentStyle);
     decls.push(
       ['box-sizing', 'border-box'],
       ['width', `${he.offsetWidth}px`],
@@ -397,7 +419,7 @@ function cloneNode(
   }
 
   collectFamilies(csMap.get('font-family'), ctx.families);
-  let decls = diffStyle(csMap, getDefaultStyle(el, null), parentStyle);
+  let decls = diffStyle(csMap, getDefaultStyle(el, null, csMap.get('appearance')), parentStyle);
   if (el.localName === 'fieldset') {
     // WebKit's computed fieldset height excludes the rendered legend; pinning
     // it would clip the clone. Let the fieldset size from its content.
