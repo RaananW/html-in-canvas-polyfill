@@ -218,6 +218,10 @@ computed styles, fonts, images, and form state, then decoded into an
 - Snapshots are asynchronous. A drawn image lags DOM changes by two or three
   frames (about 35–50 ms for a 40-element panel), where native paints in
   the same frame. Drawing before the first `paint` throws, as in native.
+- Drawables that change together are painted together, as natively: a
+  `paint` waits for every snapshot that started in the same frame. A small
+  drawable that changes along with a large one therefore appears when the
+  large one is ready.
 - Serialization costs about 5–50 ms for complex trees: fine for forms, menus,
   and labels, not for animating large subtrees every frame. It grows with the
   number of elements in the drawable (about 1 ms per element in Chromium), not
