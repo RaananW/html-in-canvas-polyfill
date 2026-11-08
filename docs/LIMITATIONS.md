@@ -281,12 +281,15 @@ computed styles, fonts, images, and form state, then decoded into an
   change, a state pseudo-class or `:has()` matching differently, a running
   animation, or a query container changing size re-reads the affected
   elements; a stylesheet, viewport, font or ancestor change re-reads them all.
-  Changes no rule sees can be drawn stale: a stylesheet edited in place
-  through the CSSOM (`rule.style.color = …`), a media query that flips without
-  a resize (`prefers-color-scheme`), or a change to an ancestor's sibling
-  that a selector depends on (`.open ~ main .card`). They're drawn once
-  something else changes the element. `install({ incremental: false })` reads
-  every element in full, to rule this out.
+  Some changes take no new snapshot at all, with or without reuse: a
+  stylesheet edited in place through the CSSOM (`rule.style.color = …`), a
+  media query that flips without a resize (`prefers-color-scheme`), or a
+  change to an ancestor's sibling that a selector depends on
+  (`.open ~ main .card`). They're drawn when something else takes one. That
+  snapshot may still reuse the stale style, but the reused elements are
+  re-read in idle time afterwards (a few milliseconds at a time), and a
+  difference takes a new snapshot, usually within a second.
+  `install({ incremental: false })` reads every element in full.
 - An attribute change on an element that contains a canvas (a theme class
   on a wrapper, for example) takes new snapshots of that canvas.
 - Cross-origin images and fonts without CORS are left out. Iframes and

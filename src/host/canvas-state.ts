@@ -32,6 +32,8 @@ const CARET_BLINK_MS = 500;
  * mutations, hover, the animation's end) are captured at once.
  */
 const ANIMATION_CAPTURE_SPACING = 3;
+/** Milliseconds of idle time each slice of the re-check of reused styles may take. */
+const RECHECK_SLICE_MS = 4;
 
 /** Incremental snapshots (docs/INCREMENTAL.md); install({ incremental: false }) turns them off. */
 export const snapshotSettings = { incremental: true };
@@ -90,6 +92,9 @@ export class CanvasState {
    * last snapshot, from DOM changes; 'all' when anything may have changed.
    */
   private readonly styleChanges = new Map<Element, Set<Element> | 'all'>();
+  /** Per drawable, what its last snapshot reused, still to re-check in idle time. */
+  private readonly recheck = new Map<Element, Array<[Element, string | null]>>();
+  private recheckScheduled = false;
   /** Per drawable, the query containers it and its ancestors had at its last snapshot. */
   private readonly queryContainers = new WeakMap<Element, Element[]>();
   /** Main-thread milliseconds the last capture of each drawable took, and when it ended. */
@@ -537,6 +542,7 @@ export class CanvasState {
     });
     const ms = performance.now() - started;
     if (styles && pageRules(el.ownerDocument)?.containers) this.recordContainers(el);
+    if (styles) this.scheduleRecheck(el, this.styleCache!.reusedList);
     // Visible in DevTools' performance panel, and read by scripts/bench.mjs.
     // Browsers without the options form (Safari before 14.1) throw.
     try {
@@ -587,6 +593,7 @@ export class CanvasState {
     const containers = rules?.containers ? sizes(this.queryContainers.get(el) ?? []) : undefined;
     cache.read = cache.reused = 0;
     cache.containers = [];
+    cache.reusedList = [];
     const all = () => true;
     if (!last || !rules || changes === 'all' || last.key !== rules.key || last.viewport !== viewport) return all;
     if (rules.containers && (last.containers === undefined || last.containers !== containers)) return all;
@@ -612,6 +619,45 @@ export class CanvasState {
       for (const e of Array.from(r.querySelectorAll('*'))) fresh.add(e);
     }
     return (e) => fresh.has(e);
+  }
+
+  /**
+   * The safety net of docs/INCREMENTAL.md: a change the invalidation rules
+   * miss (a stylesheet edited in place, say) would otherwise leave reused
+   * styles stale. In idle time, re-read what the last snapshot of `el` reused,
+   * a few milliseconds at a time, and take a new snapshot if any of it changed.
+   */
+  private scheduleRecheck(el: Element, reused: Array<[Element, string | null]>): void {
+    if (reused.length === 0) this.recheck.delete(el);
+    else this.recheck.set(el, [...reused]);
+    if (this.recheck.size === 0 || this.recheckScheduled) return;
+    this.recheckScheduled = true;
+    const idle = (globalThis as { requestIdleCallback?: (fn: () => void, opts: { timeout: number }) => number }).requestIdleCallback;
+    const later = (fn: () => void) => (idle ? idle(fn, { timeout: 1000 }) : setTimeout(fn, 50));
+    const slice = () => {
+      const end = performance.now() + RECHECK_SLICE_MS;
+      for (const [drawable, list] of this.recheck) {
+        if (!this.observed.has(drawable)) {
+          this.recheck.delete(drawable);
+          continue;
+        }
+        while (list.length > 0 && performance.now() < end) {
+          const [target, pseudo] = list.pop()!;
+          if (this.styleCache!.check(target, pseudo)) continue;
+          // Stale: drop what's kept and redraw. The new snapshot replaces the rest of the list.
+          this.styleCache!.delete(target);
+          this.markStyle(target);
+          this.dirty.add(drawable);
+          this.callbacks.schedule();
+          list.length = 0;
+        }
+        if (list.length === 0) this.recheck.delete(drawable);
+        if (performance.now() >= end) break;
+      }
+      if (this.recheck.size > 0) later(slice);
+      else this.recheckScheduled = false;
+    };
+    later(slice);
   }
 
   /** The query containers in and above `el`, and their sizes, for the next snapshot to compare. */
