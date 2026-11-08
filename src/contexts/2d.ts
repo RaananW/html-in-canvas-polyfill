@@ -1,5 +1,5 @@
 import { invalidState, isElement } from '../dom.js';
-import { ElementImage, elementImageRecord } from '../element-image.js';
+import { ElementImage, elementImageRecord, imageRecordFor } from '../element-image.js';
 import { drawMatrix, gridToCanvas } from '../geometry/matrix.js';
 import { placeholderOf, queueOffscreenGeometry } from '../geometry/offscreen.js';
 import { nearestState } from '../host/canvas-state.js';
@@ -10,7 +10,8 @@ import { type Ctx2D, drawOptions, drawRecord, notSource, parseDrawArgs } from '.
 
 /** Resolves the snapshot to draw, throwing the errors the spec requires. */
 export function recordFor(canvas: unknown, source: unknown): SnapshotRecord {
-  if (source instanceof ElementImage) return elementImageRecord(source);
+  // An OffscreenCanvas stands for the canvas it was transferred from.
+  if (source instanceof ElementImage) return imageRecordFor(source, canvasOf(canvas));
   if (!isElement(source)) throw notSource();
   if (!(canvas instanceof HTMLCanvasElement) || canvas.content !== 'drawable') {
     throw invalidState('DrawElementImage requires the canvas to have the content=drawable attribute.');
@@ -25,6 +26,12 @@ export function recordFor(canvas: unknown, source: unknown): SnapshotRecord {
   const record = state.snapshots.get(source);
   if (!record) throw invalidState('No cached paint record for element.');
   return record;
+}
+
+/** The HTMLCanvasElement a 2D or WebGL context draws to, on this thread. */
+function canvasOf(canvas: unknown): HTMLCanvasElement | undefined {
+  if (canvas instanceof HTMLCanvasElement) return canvas;
+  return typeof OffscreenCanvas !== 'undefined' && canvas instanceof OffscreenCanvas ? placeholderOf(canvas) : undefined;
 }
 
 const gpuFail = (message: string) =>
