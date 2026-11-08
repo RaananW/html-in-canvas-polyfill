@@ -103,17 +103,17 @@ test('an endless animation in a large drawable keeps the page responsive', async
       if ((e as CanvasPaintEvent).changedElements.includes(panel)) paints.push(performance.now());
     });
     while (paints.length < 2) await new Promise(requestAnimationFrame);
-    const frames = async (ms: number) => {
-      let count = 0;
-      const start = performance.now();
-      while (performance.now() - start < ms) {
-        await new Promise(requestAnimationFrame);
-        count++;
-      }
-      return (count * 1000) / (performance.now() - start);
-    };
+    // Frames until the animation has been drawn three more times (captures take
+    // longer on slow machines), or 10 s.
     const from = paints.length;
-    const fps = await frames(3000);
+    let count = 0;
+    const start = performance.now();
+    while (paints.length - from < 3 && performance.now() - start < 10_000) {
+      await new Promise(requestAnimationFrame);
+      count++;
+    }
+    const seconds = (performance.now() - start) / 1000;
+    const fps = count / seconds;
     const animationPaints = paints.slice(from);
     const intervals = animationPaints.slice(1).map((t, i) => t - animationPaints[i]!);
     // A real change: drawn in the next capture, not after the animation's spacing.
@@ -126,14 +126,14 @@ test('an endless animation in a large drawable keeps the page responsive', async
     while (paints.length === before) await new Promise(requestAnimationFrame);
     canvas.remove();
     const longest = Math.max(...intervals);
-    return { fps, animationPaints: animationPaints.length, longest, input: paints[before]! - changed };
+    return { fps, seconds, animationPaints: animationPaints.length, longest, input: paints[before]! - changed };
   });
   console.log(
-    `[${info.project.name}] ${result.fps.toFixed(1)} fps, ${result.animationPaints} animation paints in 3 s, ` +
+    `[${info.project.name}] ${result.fps.toFixed(1)} fps, ${result.animationPaints} animation paints in ${result.seconds.toFixed(1)} s, ` +
       `longest gap ${result.longest.toFixed(0)} ms, input drawn after ${result.input.toFixed(0)} ms`,
   );
   // The animation is still drawn.
-  expect(result.animationPaints).toBeGreaterThanOrEqual(2);
+  expect(result.animationPaints).toBeGreaterThanOrEqual(3);
   // Captures leave most frames to the page.
   expect(result.fps).toBeGreaterThan(20);
   // A real change doesn't wait for the animation's spacing.
