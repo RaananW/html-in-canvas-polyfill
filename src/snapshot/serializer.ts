@@ -29,6 +29,70 @@ export interface SnapshotOptions {
   rootStyle?: Array<[string, string]>;
   /** Keep the SVG markup on the result (debugging only). */
   keepSvg?: boolean;
+  /** Reuse styles read by earlier snapshots of the same element (docs/INCREMENTAL.md). */
+  styles?: { cache: StyleCache; fresh: (el: Element) => boolean };
+}
+
+/**
+ * Values read again for every element: getComputedStyle reports used values
+ * for most of these, so they change with layout, anywhere. The others are the
+ * ones element geometry overrides (position, z-index, clip-path and the
+ * individual transforms), whose rules change as elements are drawn.
+ */
+const LAYOUT = new Set(
+  ['width', 'height', 'inline-size', 'block-size', 'top', 'right', 'bottom', 'left', 'transform', 'transform-origin', 'perspective-origin', 'grid-template-columns', 'grid-template-rows', 'line-height', 'position', 'z-index', 'clip-path', 'translate', 'rotate', 'scale'].concat(
+    ...['margin', 'padding'].map((box) => ['top', 'right', 'bottom', 'left', 'block-start', 'block-end', 'inline-start', 'inline-end'].map((side) => `${box}-${side}`)),
+    ['block-start', 'block-end', 'inline-start', 'inline-end'].map((side) => `inset-${side}`),
+  ),
+);
+
+interface StyleEntry {
+  /** The values that differ from `defaults`, without the layout ones. */
+  values: Map<string, string>;
+  /** The UA default they were diffed against: a different one means the element's state changed. */
+  defaults: Map<string, string>;
+  /** The declarations those values gave, without the layout ones. */
+  decls?: Array<[string, string]>;
+}
+
+/** Computed values by name. */
+interface Style {
+  get(name: string): string | undefined;
+}
+
+/** A computed style as readStyle returns it. */
+interface ReadStyle extends Style {
+  /** The whole style, when it was read in full. */
+  map: Map<string, string> | null;
+  /** What the cache keeps for it. */
+  entry: StyleEntry | undefined;
+}
+
+let layoutNames: string[] | null = null;
+
+/** Styles kept between snapshots, per element and pseudo-element. */
+export class StyleCache {
+  private readonly entries = new WeakMap<Element, Map<string, StyleEntry>>();
+  /** Elements read in full, and reused, by the last snapshot. */
+  read = 0;
+  reused = 0;
+  /** Query containers (container-type other than normal) the last snapshot met. */
+  containers: Element[] = [];
+
+  get(el: Element, pseudo: string | null): StyleEntry | undefined {
+    return this.entries.get(el)?.get(pseudo ?? '');
+  }
+
+  set(el: Element, pseudo: string | null, entry: StyleEntry): void {
+    let byPseudo = this.entries.get(el);
+    if (!byPseudo) this.entries.set(el, (byPseudo = new Map()));
+    byPseudo.set(pseudo ?? '', entry);
+  }
+
+  /** Drops what's kept for `el` (its pseudo-elements included). */
+  delete(el: Element): void {
+    this.entries.delete(el);
+  }
 }
 
 export interface SnapshotResult {
@@ -112,6 +176,56 @@ function styleToMap(cs: CSSStyleDeclaration, custom: ReadonlySet<string> = EMPTY
 
 const EMPTY: ReadonlySet<string> = new Set();
 
+/**
+ * An element's (or pseudo-element's) computed style, as styleToMap reads it.
+ * With a cache, an element that can't have changed is rebuilt from the values
+ * kept last time, its UA default and a fresh read of the layout values.
+ */
+function readStyle(el: Element, pseudo: string | null, ctx: CloneContext): ReadStyle {
+  const cs = computedStyle(el, pseudo);
+  const svg = el instanceof SVGElement;
+  const styles = ctx.styles;
+  const whole = (map: Map<string, string>, entry?: StyleEntry): ReadStyle => ({ get: (n) => map.get(n), map, entry });
+  // SVG geometry properties keep their own rules; SVG is read in full.
+  if (!styles || svg) return whole(styleToMap(cs, ctx.customProps, svg));
+  const defaults = getDefaultStyle(el, pseudo);
+  const kept = styles.cache.get(el, pseudo);
+  let style: ReadStyle;
+  if (kept?.decls && kept.defaults === defaults && !styles.fresh(el)) {
+    styles.cache.reused++;
+    const layout = new Map<string, string>();
+    for (const name of (layoutNames ??= standardNames!.html.filter((n) => LAYOUT.has(n)))) layout.set(name, cs.getPropertyValue(name));
+    style = { get: (n) => layout.get(n) ?? kept.values.get(n) ?? defaults.get(n), map: null, entry: kept };
+  } else {
+    styles.cache.read++;
+    const map = styleToMap(cs, ctx.customProps, false);
+    const values = new Map<string, string>();
+    for (const [name, value] of map) if (!LAYOUT.has(name) && value !== defaults.get(name)) values.set(name, value);
+    const entry: StyleEntry = { values, defaults };
+    styles.cache.set(el, pseudo, entry);
+    style = whole(map, entry);
+  }
+  if (!pseudo && style.get('container-type') !== 'normal') styles.cache.containers.push(el);
+  return style;
+}
+
+/**
+ * The declarations for a style. A reused one keeps its declarations, and only
+ * its layout values are diffed again: an element whose parent changed is
+ * re-read itself, so what it inherits is unchanged.
+ */
+function declarationsFor(
+  style: ReadStyle,
+  defaults: Map<string, string>,
+  parent: Style | null,
+  adjust: (decls: Array<[string, string]>) => Array<[string, string]> = (d) => d,
+): Array<[string, string]> {
+  if (!style.map) return [...style.entry!.decls!, ...diffStyle(style, defaults, parent, layoutNames!)];
+  const decls = adjust(diffStyle(style, defaults, parent, style.map.keys()));
+  if (style.entry) style.entry.decls = decls.filter(([n]) => !LAYOUT.has(n));
+  return decls;
+}
+
 const LISTS = new Set(['ul', 'ol', 'menu', 'dir']);
 
 // UA defaults differ per input type (a checkbox has margins, a text input does
@@ -191,6 +305,7 @@ async function inlineCssUrls(value: string, base: string, warnings: string[]): P
 
 interface CloneContext {
   isBoundary: ((el: Element) => boolean) | undefined;
+  styles: SnapshotOptions['styles'];
   rootStyle: Array<[string, string]> | undefined;
   pending: Promise<void>[];
   customProps: ReadonlySet<string>;
@@ -227,16 +342,18 @@ function isInherited(name: string): boolean {
 // defaults matters for form controls: an author-specified border/background
 // (even an identical one) disables their native appearance.
 function diffStyle(
-  cs: Map<string, string>,
+  cs: Style,
   defaults: Map<string, string>,
-  parent: Map<string, string> | null,
+  parent: Style | null,
+  names: Iterable<string>,
 ): Array<[string, string]> {
   const out: Array<[string, string]> = [];
   const base = baselineStyle();
   // UA padding depends on `appearance` (WebKit themes text fields), so a
   // default computed with another appearance can't be trusted for padding.
   const themed = cs.get('appearance') !== defaults.get('appearance');
-  for (const [name, value] of cs) {
+  for (const name of names) {
+    const value = cs.get(name)!;
     if (themed && name.startsWith('padding')) {
       out.push([name, value]);
       continue;
@@ -287,7 +404,7 @@ const ALWAYS_WRITE = new Set(['min-width', 'min-height', 'min-inline-size', 'min
 // A `none` style computes its width to 0, so a default's `0px` width hides the
 // specified `medium` initial value. When the element has a visible style but a
 // 0px width, the width must be written explicitly or the clone gets 3px.
-function mustPairWidth(name: string, cs: Map<string, string>, defaults: Map<string, string>): boolean {
+function mustPairWidth(name: string, cs: Style, defaults: Map<string, string>): boolean {
   if (!name.endsWith('-width')) return false;
   const styleName = name.slice(0, -'width'.length) + 'style';
   const style = cs.get(styleName);
@@ -324,7 +441,7 @@ function applyDeclarations(
 function clonePseudo(
   src: Element,
   clone: Element,
-  hostStyle: Map<string, string>,
+  hostStyle: Style,
   ctx: CloneContext,
 ): void {
   for (const pseudo of ['::before', '::after', '::placeholder'] as const) {
@@ -333,10 +450,10 @@ function clonePseudo(
     const cs = computedStyle(src, pseudo);
     const content = cs.getPropertyValue('content');
     if (!isPlaceholder && (content === 'none' || content === 'normal' || content === '')) continue;
-    const map = styleToMap(cs, ctx.customProps);
-    const decls = diffStyle(map, getDefaultStyle(src, pseudo), hostStyle);
+    const style = readStyle(src, pseudo, ctx);
+    const decls = declarationsFor(style, getDefaultStyle(src, pseudo), hostStyle);
     if (!isPlaceholder && !decls.some(([n]) => n === 'content')) decls.push(['content', content]);
-    collectFamilies(map.get('font-family'), ctx.families);
+    collectFamilies(style.get('font-family'), ctx.families);
     const cls = `hic-p${++pseudoCounter}`;
     clone.classList.add(cls);
     applyDeclarations(decls, ctx, (css) => ctx.pseudoRules.push(`.${cls}${pseudo}{${css}}`));
@@ -383,7 +500,7 @@ function flatChildren(el: Element): Node[] {
 
 function cloneNode(
   src: Node,
-  parentStyle: Map<string, string> | null,
+  parentStyle: Style | null,
   ctx: CloneContext,
   isRoot: boolean,
 ): Node | null {
@@ -412,12 +529,15 @@ function cloneNode(
     return box;
   }
 
-  const csMap = styleToMap(computedStyle(el), ctx.customProps, el instanceof SVGElement);
+  const style = readStyle(el, null, ctx);
+  // currentcolor resolved; pinning it overrides WebKit's ::placeholder colour.
+  const unpinFill = (decls: Array<[string, string]>) =>
+    style.get('-webkit-text-fill-color') === style.get('color') ? decls.filter(([n]) => n !== '-webkit-text-fill-color') : decls;
   if (!isRoot && ctx.isBoundary?.(el)) {
     // Nested drawables have their own snapshots. Keep the box so siblings lay
     // out the same, but paint nothing.
     const he = el as HTMLElement;
-    const decls = diffStyle(csMap, getDefaultStyle(el, null), parentStyle);
+    const decls = declarationsFor(style, getDefaultStyle(el, null), parentStyle, unpinFill);
     decls.push(
       ['box-sizing', 'border-box'],
       ['width', `${he.offsetWidth}px`],
@@ -443,8 +563,8 @@ function cloneNode(
     clone = el.cloneNode(false) as Element;
   }
 
-  collectFamilies(csMap.get('font-family'), ctx.families);
-  let decls = diffStyle(csMap, getDefaultStyle(el, null), parentStyle);
+  collectFamilies(style.get('font-family'), ctx.families);
+  let decls = declarationsFor(style, getDefaultStyle(el, null), parentStyle, unpinFill);
   if (el.localName === 'fieldset' || (el instanceof HTMLTableElement && el.caption)) {
     // WebKit's computed fieldset height excludes the rendered legend; pinning
     // it would clip the clone. A table's includes its caption in Blink and
@@ -452,13 +572,9 @@ function cloneNode(
     // caption's height over the rows. Let both size from their content.
     decls = decls.filter(([n]) => n !== 'height' && n !== 'block-size');
   }
-  if (csMap.get('-webkit-text-fill-color') === csMap.get('color')) {
-    // currentcolor resolved; pinning it overrides WebKit's ::placeholder colour.
-    decls = decls.filter(([n]) => n !== '-webkit-text-fill-color');
-  }
   decls.push(['animation', 'none'], ['transition', 'none']);
-  const overflowX = csMap.get('overflow-x');
-  const overflowY = csMap.get('overflow-y');
+  const overflowX = style.get('overflow-x');
+  const overflowY = style.get('overflow-y');
   if (overflowX === 'auto' || overflowX === 'scroll' || overflowY === 'auto' || overflowY === 'scroll') {
     // A snapshot cannot scroll: clip instead, but keep the space classic
     // scrollbars take so content wraps exactly as in the live element.
@@ -471,7 +587,7 @@ function cloneNode(
   }
   if (el instanceof HTMLInputElement && el.scrollLeft !== 0) {
     // Inputs can't be scrolled in the snapshot; indent the text instead.
-    decls.push(['text-indent', `calc(${csMap.get('text-indent') ?? '0px'} - ${Math.abs(el.scrollLeft)}px)`]);
+    decls.push(['text-indent', `calc(${style.get('text-indent') ?? '0px'} - ${Math.abs(el.scrollLeft)}px)`]);
   }
   if (isRoot) {
     decls.push(
@@ -491,7 +607,7 @@ function cloneNode(
     );
   }
   applyDeclarations(decls, ctx, (css) => clone.setAttribute('style', css));
-  clonePseudo(el, clone, csMap, ctx);
+  clonePseudo(el, clone, style, ctx);
 
   if (el instanceof HTMLImageElement) {
     const url = el.currentSrc || el.src;
@@ -518,7 +634,7 @@ function cloneNode(
   children.forEach((child, i) => {
     const caret = caretBefore(el, i, ctx.sel);
     if (caret) target.appendChild(caret);
-    const c = cloneNode(child, csMap, ctx, false);
+    const c = cloneNode(child, style, ctx, false);
     if (c) target.appendChild(c);
   });
   const caret = caretBefore(el, children.length, ctx.sel);
@@ -621,6 +737,7 @@ export async function snapshot(el: Element, opts: SnapshotOptions): Promise<Snap
   const scan = scanSheets(el, warnings);
   const ctx: CloneContext = {
     isBoundary: opts.isBoundary,
+    styles: opts.styles,
     rootStyle: opts.rootStyle,
     pending: [],
     customProps: scan.customProps,

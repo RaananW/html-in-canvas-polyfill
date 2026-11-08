@@ -1,4 +1,5 @@
 import { patch, unpatch } from './api.js';
+import { snapshotSettings } from './host/canvas-state.js';
 import { start, stop } from './runtime.js';
 import { snapshotsTaint } from './snapshot/bitmap.js';
 
@@ -30,6 +31,12 @@ export const VERSION: string = typeof __HIC_VERSION__ === 'string' ? __HIC_VERSI
 export interface InstallOptions {
   /** Install even when the browser supports HTML-in-Canvas natively (testing only). */
   force?: boolean;
+  /**
+   * Reuse styles from earlier snapshots of elements that can't have changed
+   * (default true; see docs/INCREMENTAL.md). `false` reads every element in
+   * full, to rule the reuse in or out when a drawing looks stale.
+   */
+  incremental?: boolean;
 }
 
 export interface PolyfillStatus {
@@ -92,6 +99,7 @@ export function install(options: InstallOptions = {}): PolyfillStatus {
   const native = hasNativeSupport();
   if (native && !options.force) return publish(Object.freeze({ native, polyfilled: false, version: VERSION, limitations: [] }));
   installed = true;
+  snapshotSettings.incremental = options.incremental ?? true;
   patch();
   start();
   return publish(Object.freeze({ native, polyfilled: true, version: VERSION, limitations: BASE_LIMITATIONS }));

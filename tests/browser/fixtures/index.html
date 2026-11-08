@@ -7,8 +7,10 @@
 </style>
 <script type="module">
   import * as polyfill from '/dist/index.js';
-  const force = new URLSearchParams(location.search).has('force');
+  const params = new URLSearchParams(location.search);
+  const force = params.has('force');
   window.__polyfill = polyfill;
-  window.__status = polyfill.install({ force });
+  // `?full` reads every element in full (incremental snapshots off).
+  window.__status = polyfill.install({ force, incremental: !params.has('full') });
   window.__ready = true;
 </script>

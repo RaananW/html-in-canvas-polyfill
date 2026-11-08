@@ -142,9 +142,13 @@ function onMutations(records: MutationRecord[]): void {
       const state = nearestState(target);
       if (state) {
         state.markSubtree(target as Element);
+        state.markStyle(target as Element);
         if (name === 'drawable') state.markStructure();
       } else if (target === document.documentElement || target === document.body) {
         globalStyle = true;
+      } else if (isElement(target)) {
+        // An ancestor of a canvas (a theme class on a wrapper, say) changes what it inherits.
+        for (const s of states.values()) if (target.contains(s.host)) s.markAll();
       }
     } else if (record.type === 'characterData') {
       const state = nearestState(target);
@@ -164,6 +168,7 @@ function onMutations(records: MutationRecord[]): void {
       if (state) {
         if (structural) state.markStructure();
         state.markNode(target);
+        if (isElement(target)) state.markStyle(target);
       } else if (target instanceof HTMLStyleElement) {
         globalStyle = true;
       }
