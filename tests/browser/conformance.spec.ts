@@ -249,6 +249,34 @@ test('element geometry leaves computed styles alone, for nested content added in
   expect(result).toEqual(['none', 'auto', 'static', 'none', '40px', true]);
 });
 
+// Blink and WebKit include a caption in a table's computed height; a specified
+// height excludes it, so pinning the computed one would grow the rows.
+test('draws a table with a caption at its own row heights', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const row = (colour: string) => `<tr><td style="height:20px;padding:0;background:${colour}"></td></tr>`;
+    document.body.innerHTML = `
+      <canvas id="c" width="600" height="240" style="width:300px;height:120px" content="drawable">
+        <div id="d" drawable style="width:300px;height:120px">
+          <table id="t" style="border-spacing:0;width:100px">
+            <caption style="height:30px;padding:0">Invoices</caption>${row('rgb(255,0,0)')}${row('rgb(0,255,0)')}
+          </table>
+        </div>
+      </canvas>`;
+    const c = document.getElementById('c') as HTMLCanvasElement;
+    const t = document.getElementById('t')!;
+    await new Promise((r) => c.addEventListener('paint', r, { once: true }));
+    const ctx = c.getContext('2d', { willReadFrequently: true })!;
+    ctx.drawElementImage(document.getElementById('d')!, 0, 0);
+    const px = (x: number, y: number) => Array.from(ctx.getImageData(x, y, 1, 1).data);
+    // In grid pixels (scale 2): the rows span 30–70 CSS px, under the caption.
+    return { height: t.offsetHeight, first: px(100, 70), second: px(100, 130), below: px(100, 150) };
+  });
+  expect(result.height).toBe(70);
+  expect(result.first).toEqual([255, 0, 0, 255]);
+  expect(result.second).toEqual([0, 255, 0, 255]);
+  expect(result.below).toEqual([0, 0, 0, 0]);
+});
+
 test('nested drawables keep their space in the parent snapshot', async ({ page }) => {
   const result = await page.evaluate(async () => {
     document.body.innerHTML = `

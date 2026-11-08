@@ -398,9 +398,11 @@ function cloneNode(
 
   collectFamilies(csMap.get('font-family'), ctx.families);
   let decls = diffStyle(csMap, getDefaultStyle(el, null), parentStyle);
-  if (el.localName === 'fieldset') {
+  if (el.localName === 'fieldset' || (el instanceof HTMLTableElement && el.caption)) {
     // WebKit's computed fieldset height excludes the rendered legend; pinning
-    // it would clip the clone. Let the fieldset size from its content.
+    // it would clip the clone. A table's includes its caption in Blink and
+    // WebKit, while a specified height doesn't, so pinning it would spread the
+    // caption's height over the rows. Let both size from their content.
     decls = decls.filter(([n]) => n !== 'height' && n !== 'block-size');
   }
   if (csMap.get('-webkit-text-fill-color') === csMap.get('color')) {
