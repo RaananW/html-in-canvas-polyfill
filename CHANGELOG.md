@@ -4,7 +4,7 @@ All notable changes to `@underglass/html-in-canvas-polyfill`. The polyfill
 does nothing in browsers with native HTML-in-Canvas support, so these changes
 only affect browsers without it.
 
-## Unreleased
+## 0.5.0 (2026-11-09)
 
 ### Breaking
 
