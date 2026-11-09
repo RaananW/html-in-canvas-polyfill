@@ -4,7 +4,20 @@ All notable changes to `@underglass/html-in-canvas-polyfill`. The polyfill
 does nothing in browsers with native HTML-in-Canvas support, so these changes
 only affect browsers without it.
 
-## Unreleased
+## 0.5.0 (2026-11-09)
+
+### Breaking
+
+- **Worker messaging is opt-in in the main entry.** The `postMessage`,
+  `structuredClone` and `MessageEvent.data` wrappers that let an
+  `ElementImage` cross to a worker moved to
+  `@underglass/html-in-canvas-polyfill/messaging`. A page that posts
+  ElementImages, or receives them back, now imports it next to the main
+  entry. It can come before or after `install()`. Without it, transferring
+  an `ElementImage` throws `DataCloneError`. `/auto` and the script-tag
+  build include it, so pages using those change nothing.
+- The main entry is 21.59 KB min+gzip without messaging. With it, as `/auto`
+  ships it, it's 22.69 KB.
 
 ### Changed
 

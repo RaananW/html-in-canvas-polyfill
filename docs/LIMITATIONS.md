@@ -153,8 +153,15 @@ Chromium.
 Natively, an `ElementImage` is `[Transferable]`: post it with
 `postMessage(message, [image])` and the worker can draw it into an
 `OffscreenCanvas` or upload it with WebGL or WebGPU, with no code of its own.
-The polyfill's `ElementImage` is a script object, so the worker needs the
-polyfill too:
+The polyfill's `ElementImage` is a script object, so the page and the
+worker both need part of the polyfill. The page needs the messaging entry,
+unless it uses `/auto` or the script-tag build, which include it. Without it,
+transferring an `ElementImage` throws `DataCloneError`:
+
+```js
+// on the page, next to the main entry
+import '@underglass/html-in-canvas-polyfill/messaging';
+```
 
 ```js
 // worker.js (module worker)
@@ -168,7 +175,7 @@ contexts, `drawElementImageToTexture` on `GPUQueue`, and
 `getElementImageDefaultSize` on `OffscreenCanvas`. It does nothing in a worker
 with native support.
 
-How it works: the main entry (and the worker entry) wrap `postMessage` on
+How it works: the messaging entry (and the worker entry) wrap `postMessage` on
 `Worker`, `MessagePort`, `ServiceWorker`, `Client`, the window and the worker
 global, and `structuredClone`. When the transfer list contains an
 `ElementImage`, each one in the message is replaced by a plain *envelope*
